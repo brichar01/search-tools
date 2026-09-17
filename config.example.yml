@@ -1,0 +1,7 @@
+source:
+  directory: $HOME/src
+  tools: [ast, ripgrep, ripgrep-files]
+
+notes:
+  directory: $HOME/personal
+  tools: [ck, rg]
