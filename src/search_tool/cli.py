@@ -16,15 +16,14 @@ from search_tool.candidates import Candidate, build_candidates
 from search_tool.config import (
     ConfigError,
     Location,
-    builtin_locations,
     default_config_path,
-    default_tldr_dir,
     load_config,
     select_locations,
+    write_starter_config,
 )
 from search_tool.precache import main as run_precache
 from search_tool.runner import Result, plan_searches, run_search
-from search_tool.tools import KINDS
+from search_tool.tools import KIND_FLAGS, KINDS
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
@@ -35,8 +34,8 @@ def parse_args() -> argparse.Namespace:
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Locations default to every leaf of the config file plus the "
-            "built-in tldr, man and confluence locations."
+            "Every location comes from the config file. Run --init to write "
+            "the example one, then edit it."
         ),
     )
     parser.add_argument(
@@ -63,11 +62,14 @@ def parse_args() -> argparse.Namespace:
         "-k",
         "--kind",
         action="append",
-        choices=KINDS,
+        choices=KIND_FLAGS,
         dest="kinds",
         default=[],
         metavar="KIND",
-        help=f"Only run tools of this kind, repeatable. One of: {', '.join(KINDS)}",
+        help=(
+            "Only run tools of this kind, repeatable. Prefix with ! to drop a "
+            f"kind instead, as in !remote. One of: {', '.join(KINDS)}"
+        ),
     )
     parser.add_argument(
         "--json",
@@ -82,13 +84,14 @@ def parse_args() -> argparse.Namespace:
         help="Build the index of every semantic tool and search nothing",
     )
     parser.add_argument(
-        "--tldr-dir",
-        type=Path,
-        default=default_tldr_dir(),
-        help="Cheatsheet pages of the tldr submodule (default: %(default)s)",
+        "--init",
+        action="store_true",
+        help="Write the example config file to --config and search nothing",
     )
     arguments = parser.parse_args()
-    if arguments.precache:
+    if arguments.init:
+        arguments.query = None
+    elif arguments.precache:
         if arguments.query is not None:
             arguments.locations.insert(0, arguments.query)
             arguments.query = None
@@ -167,7 +170,7 @@ def main(
     kinds: list[str],
     json_output: bool,
     precache: bool,
-    tldr_dir: Path,
+    init: bool,
 ) -> int:
     """Run every selected search and write the results to stdout.
 
@@ -177,29 +180,36 @@ def main(
         locations: Config leaves to search. Empty searches every location.
         config: YAML config file naming each location and its tools.
         subdir: Glob limiting each location to matching subdirectories.
-        kinds: Search kinds to run. Empty runs every kind.
+        kinds: Search kinds to run, each optionally negated with `!`. Empty
+            runs every kind.
         json_output: Write JSON records for each search and each candidate,
             rather than the labelled output of each tool.
         precache: Build the index of every semantic tool instead of searching.
-        tldr_dir: Cheatsheet pages of the tldr submodule.
+        init: Write the example config file instead of searching.
 
     Returns:
         2 where a tool failed, 0 where anything matched, otherwise 1. Where
-        `precache` is set, 2 where an index build failed, otherwise 0.
+        `precache` is set, 2 where an index build failed, otherwise 0. Where
+        `init` is set, 0 where the file was written.
     """
+    if init:
+        try:
+            write_starter_config(config)
+        except (ConfigError, OSError) as error:
+            sys.exit(str(error.args[0]))
+        print(f"Wrote {config}")
+        return 0
+
     if precache:
         return run_precache(
             locations=locations,
             config=config,
             subdir=subdir,
             dry_run=False,
-            tldr_dir=tldr_dir,
         )
 
     try:
         known: dict[str, Location] = load_config(config)
-        for name, location in builtin_locations(tldr_dir).items():
-            known.setdefault(name, location)
         chosen = select_locations(known, locations)
     except ConfigError as error:
         sys.exit(error.args[0])
@@ -236,7 +246,7 @@ def run() -> None:
             kinds=arguments.kinds,
             json_output=arguments.json_output,
             precache=arguments.precache,
-            tldr_dir=arguments.tldr_dir,
+            init=arguments.init,
         )
     )
 

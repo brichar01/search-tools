@@ -6,7 +6,7 @@ import yaml
 
 from conftest import require_program
 from search_tool.cli import main, parse_args
-from search_tool.config import default_config_path, default_tldr_dir
+from search_tool.config import default_config_path, starter_config
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def search(workspace, tmp_path, **overrides):
         "kinds": [],
         "json_output": False,
         "precache": False,
-        "tldr_dir": tmp_path / "tldr",
+        "init": False,
     }
     return main(**(arguments | overrides))
 
@@ -101,16 +101,113 @@ def test_a_kind_filter_drops_every_tool(workspace, tmp_path, capsys):
     assert capsys.readouterr().out == ""
 
 
+def test_a_negated_kind_drops_every_tool(workspace, tmp_path, capsys):
+    assert search(workspace, tmp_path, kinds=["!regex"]) == 1
+    assert capsys.readouterr().out == ""
+
+
+def test_the_kind_flag_takes_a_negated_kind(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["search-tool", "-k", "!remote", "probe"])
+    assert parse_args().kinds == ["!remote"]
+
+
+def test_the_kind_flag_rejects_an_unknown_kind(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["search-tool", "-k", "!nope", "probe"])
+    with pytest.raises(SystemExit):
+        parse_args()
+
+
+def test_history_dedupes_repeated_commands(tmp_path, capsys):
+    require_program("rg")
+    require_program("awk")
+    history = tmp_path / "history"
+    history.write_text(
+        ": 1699999999:0;git status\n: 1700000000:0;git commit\n"
+        ": 1700000001:5;git status\nls\n"
+    )
+    config = tmp_path / "config.yml"
+    config.write_text(
+        yaml.safe_dump({"history": {"directory": str(history), "tools": ["hist"]}})
+    )
+    status = main(
+        query="git",
+        locations=[],
+        config=config,
+        subdir=None,
+        kinds=[],
+        json_output=True,
+        precache=False,
+        init=False,
+    )
+    assert status == 0
+    keys = [
+        record["key"] for record in records(capsys) if record["type"] == "candidate"
+    ]
+    assert sorted(keys) == ["git commit", "git status"]
+
+
 def test_an_unknown_location_exits(workspace, tmp_path):
     with pytest.raises(SystemExit, match="Unknown location"):
         search(workspace, tmp_path, locations=["nope"])
 
 
-def test_defaults_come_from_the_environment(monkeypatch, tmp_path):
+def test_the_config_default_comes_from_the_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("SEARCH_TOOL_CONFIG", str(tmp_path / "config.yml"))
-    monkeypatch.setenv("SEARCH_TOOL_TLDR_DIR", str(tmp_path / "pages"))
     assert default_config_path() == tmp_path / "config.yml"
-    assert default_tldr_dir() == tmp_path / "pages"
+
+
+def test_init_writes_the_example_config(tmp_path, capsys):
+    path = tmp_path / "nested" / "config.yml"
+    status = main(
+        query=None,
+        locations=[],
+        config=path,
+        subdir=None,
+        kinds=[],
+        json_output=False,
+        precache=False,
+        init=True,
+    )
+    assert status == 0
+    assert path.read_text() == starter_config()
+    assert str(path) in capsys.readouterr().out
+
+
+def test_init_refuses_to_overwrite(tmp_path):
+    path = tmp_path / "config.yml"
+    path.write_text("notes: {tools: [rg]}\n")
+    with pytest.raises(SystemExit, match="already exists"):
+        main(
+            query=None,
+            locations=[],
+            config=path,
+            subdir=None,
+            kinds=[],
+            json_output=False,
+            precache=False,
+            init=True,
+        )
+
+
+def test_init_takes_no_query(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["search-tool", "--init"])
+    arguments = parse_args()
+    assert arguments.init
+    assert arguments.query is None
+
+
+def test_a_config_naming_nothing_points_at_init(tmp_path):
+    with pytest.raises(SystemExit, match="--init"):
+        main(
+            query="saturation",
+            locations=[],
+            config=tmp_path / "absent.yml",
+            subdir=None,
+            kinds=[],
+            json_output=False,
+            precache=False,
+            init=False,
+        )
 
 
 def test_the_default_config_sits_under_the_home_config_directory(monkeypatch, tmp_path):

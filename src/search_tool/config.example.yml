@@ -1,0 +1,26 @@
+# Every location search-tool searches is declared here. Nothing is built in, so
+# a location left out of this file is never searched. Delete what this machine
+# cannot reach: tldr needs the cheatsheets cloned, confluence needs twg.
+
+source:
+  directory: $HOME/src
+  tools: [ast, ripgrep, ripgrep-files]
+  ignore: [.venv, node_modules, target]
+
+notes:
+  directory: $HOME/personal
+  tools: [ck, rg]
+
+man:
+  tools: [man]
+
+history:
+  directory: $HOME/.zsh_history
+  tools: [hist]
+
+tldr:
+  directory: $HOME/.local/share/tldr/pages
+  tools: [rg, ck]
+
+confluence:
+  tools: [rovo]

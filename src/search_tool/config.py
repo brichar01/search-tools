@@ -1,6 +1,7 @@
 """Search locations, built in and loaded from a YAML config file."""
 
 from dataclasses import dataclass
+from importlib.resources import files
 from os import environ
 from os.path import expanduser, expandvars
 from pathlib import Path
@@ -19,7 +20,7 @@ class Location:
     """A named place to search and the tools that search it.
 
     Attributes:
-        name: Leaf name from the config file, or a built-in name.
+        name: Leaf name from the config file.
         tools: Canonical tool names, in the order they run.
         directory: Root that directory tools search, or `None` where every tool
             searches a system or remote source.
@@ -40,34 +41,30 @@ def default_config_path() -> Path:
     return Path.home() / ".config" / "search-tool" / "config.yml"
 
 
-def default_tldr_dir() -> Path:
-    """Return the cheatsheet directory where `--tldr-dir` is not given.
+def starter_config() -> str:
+    """Return the example config file that ships with the package."""
+    return (files("search_tool") / "config.example.yml").read_text()
 
-    The tldr cheatsheets are a submodule of this repository, so the default is
-    the checkout the package was installed from.
+
+def write_starter_config(path: Path) -> None:
+    """Write the example config file, for a machine that has none yet.
+
+    Args:
+        path: Where to write it. Parent directories are created.
+
+    Raises:
+        ConfigError: The path is already taken, so writing would lose whatever
+            is there.
     """
-    override = environ.get("SEARCH_TOOL_TLDR_DIR")
-    if override:
-        return Path(override)
-    return Path(__file__).resolve().parents[2] / "tldr" / "pages"
+    if path.exists():
+        raise ConfigError(f"{path} already exists")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(starter_config())
 
 
 def expand(directory: str) -> Path:
     """Return an absolute path with `~` and environment variables resolved."""
     return Path(expanduser(expandvars(directory))).absolute()
-
-
-def builtin_locations(tldr_dir: Path) -> dict[str, Location]:
-    """Return the locations that need no config file.
-
-    Args:
-        tldr_dir: The `pages` directory of the tldr cheatsheets submodule.
-    """
-    return {
-        "tldr": Location("tldr", ("rg", "ck"), tldr_dir),
-        "man": Location("man", ("man",)),
-        "confluence": Location("confluence", ("rovo",)),
-    }
 
 
 def parse_ignore(name: object, raw: object) -> tuple[str, ...]:
@@ -99,9 +96,9 @@ def parse_config(document: object) -> dict[str, Location]:
         document: The object `yaml.safe_load` returned, or `None` for an empty file.
 
     Raises:
-        ConfigError: A leaf is missing `tools`, names a tool that needs a
-            directory without giving one, or lists something other than
-            directory names under `ignore`.
+        ConfigError: A leaf is missing `tools`, gives something other than a
+            list of tools, names a tool that needs a directory without giving
+            one, or lists something other than directory names under `ignore`.
     """
     if document is None:
         return {}
@@ -115,6 +112,8 @@ def parse_config(document: object) -> dict[str, Location]:
         raw_tools = leaf.get("tools")
         if not raw_tools:
             raise ConfigError(f"Location {name!r} lists no tools")
+        if not isinstance(raw_tools, list):
+            raise ConfigError(f"Location {name!r} must list its tools")
         directory = leaf.get("directory")
         ignore = parse_ignore(name, leaf.get("ignore"))
         tools = []
@@ -168,8 +167,13 @@ def select_locations(
         names: Names given on the command line. Empty selects every location.
 
     Raises:
-        ConfigError: A name matches no location.
+        ConfigError: The config file names no location, or a name matches none.
     """
+    if not locations:
+        raise ConfigError(
+            "The config file names no location. Run search-tool --init to "
+            "write the example one."
+        )
     if not names:
         return list(locations.values())
     chosen = []

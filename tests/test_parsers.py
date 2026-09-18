@@ -3,6 +3,7 @@ import json
 from search_tool.parsers import (
     parse_ast_grep,
     parse_ck,
+    parse_history,
     parse_man,
     parse_paths,
     parse_ripgrep,
@@ -140,3 +141,10 @@ def test_parse_rovo_falls_back_to_the_inline_items():
 def test_parse_rovo_without_results():
     assert parse_rovo("") == []
     assert parse_rovo("not json or yaml: [") == []
+
+
+def test_parse_history_keys_on_the_command_text():
+    hits = parse_history("git status\n\ngit push\n")
+    assert [hit.key for hit in hits] == ["git status", "git push"]
+    assert all(hit.kind == "command" for hit in hits)
+    assert all(hit.line is None and hit.end_line is None for hit in hits)

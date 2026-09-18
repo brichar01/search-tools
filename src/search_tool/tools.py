@@ -8,6 +8,7 @@ from search_tool.parsers import (
     Hit,
     parse_ast_grep,
     parse_ck,
+    parse_history,
     parse_man,
     parse_paths,
     parse_ripgrep,
@@ -158,6 +159,27 @@ def _ast_grep_json(
     ]
 
 
+# Strips the zsh extended-history prefix, then keeps the first run of each
+# command, so a command repeated across the file reports once.
+_HISTORY_TIDY = '{sub(/^: [0-9]+:[0-9]+;/, "")} !seen[$0]++'
+
+
+def _history(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
+    return [
+        [
+            "rg",
+            "--color",
+            "never",
+            "--no-filename",
+            "--no-line-number",
+            "--",
+            query,
+            str(directory),
+        ],
+        ["awk", _HISTORY_TIDY],
+    ]
+
+
 def _manual(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
     return [["man", "-K", "-w", "--regex", query]]
 
@@ -179,6 +201,7 @@ TOOLS = {
         Tool("ck", "semantic", True, _ck_semantic, _ck_semantic_json, parse_ck),
         Tool("m2v", "semantic", True, _semantic, _semantic_json, parse_semantic),
         Tool("ast", "ast", True, _ast_grep, _ast_grep_json, parse_ast_grep),
+        Tool("hist", "regex", True, _history, _history, parse_history),
         Tool("man", "regex", False, _manual, _manual, parse_man),
         Tool("rovo", "remote", False, _rovo, _rovo_json, parse_rovo),
     )
@@ -195,6 +218,25 @@ ALIASES = {
 }
 
 KINDS = sorted({tool.kind for tool in TOOLS.values()})
+
+KIND_FLAGS = [*KINDS, *(f"!{kind}" for kind in KINDS)]
+"""Every `--kind` value, each kind on its own and negated."""
+
+
+def resolve_kinds(kinds: list[str]) -> set[str]:
+    """Return the search kinds to run.
+
+    Args:
+        kinds: Kind names as `--kind` takes them, each either a kind or a kind
+            prefixed with `!` to drop it.
+
+    Returns:
+        The named kinds less the negated ones. Naming no kind to keep starts
+        from every kind, so `!remote` alone runs everything else.
+    """
+    dropped = {kind[1:] for kind in kinds if kind.startswith("!")}
+    kept = {kind for kind in kinds if not kind.startswith("!")}
+    return (kept or set(KINDS)) - dropped
 
 
 def resolve_tool(name: str) -> Tool:

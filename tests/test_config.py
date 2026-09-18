@@ -4,10 +4,11 @@ import yaml
 from search_tool.config import (
     ConfigError,
     Location,
-    builtin_locations,
     load_config,
     parse_config,
     select_locations,
+    starter_config,
+    write_starter_config,
 )
 
 
@@ -45,6 +46,8 @@ def test_parse_config_accepts_an_empty_document():
     [
         {"source": {"directory": "/tmp", "tools": []}},
         {"source": {"directory": "/tmp", "tools": ["nope"]}},
+        {"source": {"directory": "/tmp", "tools": "rg"}},
+        {"source": {"directory": "/tmp", "tools": None}},
         {"source": {"tools": ["rg"]}},
         {"source": ["rg"]},
         {"source": {"directory": "/tmp", "tools": ["rg"], "ignore": ".venv"}},
@@ -75,19 +78,43 @@ def test_load_config_rejects_broken_yaml(tmp_path):
         load_config(path)
 
 
-def test_builtin_locations(tmp_path):
-    builtins = builtin_locations(tmp_path)
-    assert builtins["tldr"].directory == tmp_path
-    assert builtins["man"].directory is None
-    assert set(builtins) == {"tldr", "man", "confluence"}
+KNOWN = {
+    "man": Location("man", ("man",)),
+    "notes": Location("notes", ("rg",), None),
+}
 
 
-def test_select_locations_defaults_to_every_location(tmp_path):
-    known = builtin_locations(tmp_path)
-    assert select_locations(known, []) == list(known.values())
-    assert select_locations(known, ["man"]) == [known["man"]]
+def test_select_locations_defaults_to_every_location():
+    assert select_locations(KNOWN, []) == list(KNOWN.values())
+    assert select_locations(KNOWN, ["man"]) == [KNOWN["man"]]
 
 
-def test_select_locations_rejects_an_unknown_name(tmp_path):
-    with pytest.raises(ConfigError, match="notes"):
-        select_locations(builtin_locations(tmp_path), ["notes"])
+def test_select_locations_rejects_an_unknown_name():
+    with pytest.raises(ConfigError, match="wiki"):
+        select_locations(KNOWN, ["wiki"])
+
+
+def test_select_locations_rejects_a_config_naming_nothing():
+    with pytest.raises(ConfigError, match="--init"):
+        select_locations({}, [])
+
+
+def test_the_starter_config_declares_every_location_it_mentions():
+    locations = parse_config(yaml.safe_load(starter_config()))
+    assert {"man", "history", "tldr", "confluence"} <= set(locations)
+    assert locations["man"].tools == ("man",)
+    assert locations["history"].tools == ("hist",)
+
+
+def test_write_starter_config_creates_the_parent_directory(tmp_path):
+    path = tmp_path / "nested" / "config.yml"
+    write_starter_config(path)
+    assert parse_config(yaml.safe_load(path.read_text()))
+
+
+def test_write_starter_config_refuses_to_overwrite(tmp_path):
+    path = tmp_path / "config.yml"
+    path.write_text("notes: {tools: [rg]}\n")
+    with pytest.raises(ConfigError, match="already exists"):
+        write_starter_config(path)
+    assert path.read_text() == "notes: {tools: [rg]}\n"

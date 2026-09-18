@@ -14,7 +14,7 @@ class Hit:
     Attributes:
         key: What the hit identifies, either an absolute path or a URL. Hits
             that share a key are candidates for merging.
-        kind: `file`, `manual` or `remote`.
+        kind: `file`, `command`, `manual` or `remote`.
         line: First line of the match, or `None` where the tool matched a whole
             file or page.
         end_line: Last line of the match, or `None` alongside a `None` line.
@@ -130,6 +130,19 @@ def parse_paths(stdout: str) -> list[Hit]:
     """Return one whole-file hit per path listed."""
     return [
         Hit(key=line, kind="file", line=None, end_line=None, text=line)
+        for line in stdout.splitlines()
+        if line.strip()
+    ]
+
+
+def parse_history(stdout: str) -> list[Hit]:
+    """Return one hit per shell command listed.
+
+    The command text is the key, so the same command run many times merges into
+    one candidate.
+    """
+    return [
+        Hit(key=line, kind="command", line=None, end_line=None, text=line)
         for line in stdout.splitlines()
         if line.strip()
     ]

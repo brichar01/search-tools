@@ -32,7 +32,7 @@ class Candidate:
 
     Attributes:
         key: Absolute path or URL the candidate lives at.
-        kind: `file`, `manual` or `remote`.
+        kind: `file`, `command`, `manual` or `remote`.
         line: First line of the merged span, or `None` for a whole file or page.
         end_line: Last line of the merged span.
         text: Longest text any source reported, for a later ranking stage.

@@ -13,9 +13,7 @@ from pathlib import Path
 from search_tool.config import (
     ConfigError,
     Location,
-    builtin_locations,
     default_config_path,
-    default_tldr_dir,
     load_config,
     select_locations,
 )
@@ -91,12 +89,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Write the directories that need indexing without indexing them",
     )
-    parser.add_argument(
-        "--tldr-dir",
-        type=Path,
-        default=default_tldr_dir(),
-        help="Cheatsheet pages of the tldr submodule (default: %(default)s)",
-    )
     return parser.parse_args()
 
 
@@ -105,7 +97,6 @@ def main(
     config: Path,
     subdir: str | None,
     dry_run: bool,
-    tldr_dir: Path,
 ) -> int:
     """Index every directory a semantic search would read.
 
@@ -114,15 +105,12 @@ def main(
         config: YAML config file naming each location and its tools.
         subdir: Glob limiting each location to matching subdirectories.
         dry_run: Write the directories without running the index builds.
-        tldr_dir: Cheatsheet pages of the tldr submodule.
 
     Returns:
         2 where an index build failed, otherwise 0.
     """
     try:
         known: dict[str, Location] = load_config(config)
-        for name, location in builtin_locations(tldr_dir).items():
-            known.setdefault(name, location)
         chosen = select_locations(known, locations)
     except ConfigError as error:
         sys.exit(error.args[0])
@@ -151,7 +139,6 @@ def run() -> None:
             config=arguments.config,
             subdir=arguments.subdir,
             dry_run=arguments.dry_run,
-            tldr_dir=arguments.tldr_dir,
         )
     )
 

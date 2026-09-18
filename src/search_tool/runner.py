@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from search_tool.config import Location
-from search_tool.tools import TOOLS, Command
+from search_tool.tools import TOOLS, Command, resolve_kinds
 
 
 @dataclass(frozen=True)
@@ -82,16 +82,18 @@ def plan_searches(
     Args:
         locations: The selected locations.
         query: The text, pattern or AST pattern to search for.
-        kinds: Search kinds to keep. Empty keeps every kind.
+        kinds: Search kinds to keep, each optionally negated with `!`.
+            Empty keeps every kind.
         subdir: Glob limiting each location to matching subdirectories.
         structured: Ask each tool for the output its parser reads, rather than
             the output written for a person.
     """
+    wanted = resolve_kinds(kinds)
     searches = []
     for location in locations:
         for name in location.tools:
             tool = TOOLS[name]
-            if kinds and tool.kind not in kinds:
+            if tool.kind not in wanted:
                 continue
             build = tool.build_json if structured else tool.build
             for directory in targets(

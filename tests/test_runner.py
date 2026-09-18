@@ -3,6 +3,7 @@ from pathlib import Path
 from conftest import require_program
 from search_tool.config import Location
 from search_tool.runner import Search, plan_searches, run_search, targets
+from search_tool.tools import KINDS, resolve_kinds
 
 
 def test_targets_without_a_subdir(tmp_path):
@@ -39,6 +40,29 @@ def test_plan_searches_covers_every_tool_and_target(tmp_path):
         ("ck", tmp_path / "two"),
         ("rovo", None),
     ]
+
+
+def test_resolve_kinds_without_a_flag_keeps_every_kind():
+    assert resolve_kinds([]) == set(KINDS)
+
+
+def test_resolve_kinds_drops_a_negated_kind():
+    assert resolve_kinds(["!remote"]) == set(KINDS) - {"remote"}
+    assert resolve_kinds(["!remote", "!ast"]) == set(KINDS) - {"remote", "ast"}
+
+
+def test_resolve_kinds_negates_within_the_named_kinds():
+    assert resolve_kinds(["regex", "semantic", "!semantic"]) == {"regex"}
+    assert resolve_kinds(["remote", "!remote"]) == set()
+
+
+def test_plan_searches_drops_a_negated_kind(tmp_path):
+    locations = [
+        Location("source", ("rg", "ck", "ast"), tmp_path),
+        Location("confluence", ("rovo",)),
+    ]
+    searches = plan_searches(locations, "probe", ["!remote", "!ast"], None)
+    assert [search.tool for search in searches] == ["rg", "ck"]
 
 
 def test_plan_searches_filters_by_kind(tmp_path):
@@ -139,3 +163,21 @@ def test_plan_searches_leaves_directoryless_tools_alone(tmp_path):
     locations = [Location("man", ("man",), None, (".venv",))]
     (search,) = plan_searches(locations, "probe", [], None)
     assert search.command == [["man", "-K", "-w", "--regex", "probe"]]
+
+
+def test_plan_searches_tidies_the_shell_history(tmp_path):
+    history = tmp_path / "history"
+    (search,) = plan_searches(
+        [Location("history", ("hist",), history)], "git", [], None
+    )
+    assert search.command[0] == [
+        "rg",
+        "--color",
+        "never",
+        "--no-filename",
+        "--no-line-number",
+        "--",
+        "git",
+        str(history),
+    ]
+    assert search.command[1][0] == "awk"
