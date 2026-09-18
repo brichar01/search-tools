@@ -23,12 +23,13 @@ from search_tool.runner import Search, run_search, targets
 from search_tool.tools import TOOLS, Command
 
 
-def _ck_index(directory: Path) -> Command:
+def _ck_index(directory: Path, ignore: tuple[str, ...]) -> Command:
     # ck --index reads its first positional as a pattern and the rest as paths.
-    return [["ck", "--index", "", str(directory)]]
+    excludes = [argument for name in ignore for argument in ("--exclude", name)]
+    return [["ck", "--index", "", *excludes, str(directory)]]
 
 
-INDEXED_TOOLS: dict[str, Callable[[Path], Command]] = {"ck": _ck_index}
+INDEXED_TOOLS: dict[str, Callable[[Path, tuple[str, ...]], Command]] = {"ck": _ck_index}
 """The tools that keep an index, and the command that builds it."""
 
 
@@ -60,7 +61,7 @@ def plan_indexes(locations: list[Location], subdir: str | None) -> list[Search]:
                         tool=name,
                         kind=TOOLS[name].kind,
                         directory=directory,
-                        command=build(directory),
+                        command=build(directory, location.ignore),
                     )
                 )
     return indexes

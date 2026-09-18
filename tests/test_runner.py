@@ -89,3 +89,53 @@ def test_plan_searches_pipes_paths_through_fzf(tmp_path):
         ["rg", "--files", str(tmp_path)],
         ["fzf", "--filter", "probe"],
     ]
+
+
+def test_plan_searches_prunes_the_ignored_directories(tmp_path):
+    locations = [
+        Location(
+            "source",
+            ("rg", "rg-files", "fzf", "ck", "m2v", "ast"),
+            tmp_path,
+            (".venv", "dist"),
+        )
+    ]
+    commands = {
+        search.tool: search.command
+        for search in plan_searches(locations, "probe", [], None)
+    }
+    assert commands["rg"][0][5:7] == ["--glob=!.venv/", "--glob=!dist/"]
+    assert commands["rg-files"][0] == [
+        "rg",
+        "--files",
+        "--glob=!.venv/",
+        "--glob=!dist/",
+        str(tmp_path),
+    ]
+    assert commands["fzf"][0] == commands["rg-files"][0]
+    assert commands["ck"][0] == [
+        "ck",
+        "--sem",
+        "--exclude",
+        ".venv",
+        "--exclude",
+        "dist",
+        "probe",
+        str(tmp_path),
+    ]
+    assert commands["m2v"][0] == [
+        "search-tool-semantic",
+        "--skip",
+        ".venv",
+        "--skip",
+        "dist",
+        "probe",
+        str(tmp_path),
+    ]
+    assert commands["ast"][0][4:6] == ["--globs=!.venv/", "--globs=!dist/"]
+
+
+def test_plan_searches_leaves_directoryless_tools_alone(tmp_path):
+    locations = [Location("man", ("man",), None, (".venv",))]
+    (search,) = plan_searches(locations, "probe", [], None)
+    assert search.command == [["man", "-K", "-w", "--regex", "probe"]]

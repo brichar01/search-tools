@@ -53,16 +53,23 @@ tldr search fails with `No such file or directory`.
 
 Each top-level key is a location. `directory` is the root to search and accepts
 `~` and environment variables. `tools` lists the tools that run there, in order.
+`ignore` lists directory names every tool prunes, matched at any depth.
 
 ```yaml
 source:
   directory: $HOME/src
   tools: [ast, ripgrep, ripgrep-files]
+  ignore: [.venv, node_modules, target]
 
 notes:
   directory: $HOME/personal
   tools: [ck, rg]
 ```
+
+`ignore` takes bare directory names, not paths. Each tool prunes them with its
+own flag: `rg --glob=!name/`, `ck --exclude name`, `ast-grep --globs=!name/` and
+`search-tool-semantic --skip name`. `man` and `rovo` search no directory, so
+they ignore it.
 
 The file is read from `--config`, from `$SEARCH_TOOL_CONFIG`, or from
 `$HOME/.config/search-tool/config.yml`, in that order. Where no file is found,
@@ -159,11 +166,12 @@ rg -n "def " src | search-tool-semantic "build the search plan" --threshold 0.4
 | `-k`, `--top-k` | How many lines to return, 10 by default |
 | `-t`, `--threshold` | Lowest cosine similarity to return, 0.0 by default |
 | `-m`, `--model` | Model to load, `minishlab/potion-base-8M` by default |
+| `--skip` | Directory name to prune, repeatable |
 | `--json` | One JSON record per line, with its score |
 
 Text output is `source:line:text`, where `source` is `-` for standard input.
-Lines that are blank, files that are not text, and paths holding a dot
-component, `.git` among them, are all skipped.
+Lines that are blank, files that are not text, paths holding a dot component,
+`.git` among them, and paths under a `--skip` name are all skipped.
 
 The first run downloads the model from Hugging Face, around 30 MB, and caches
 it under `$HF_HOME`. Runs after that need no network. Exit status is 2 where

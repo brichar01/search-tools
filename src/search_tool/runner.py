@@ -103,7 +103,7 @@ def plan_searches(
                         tool=tool.name,
                         kind=tool.kind,
                         directory=directory,
-                        command=build(query, directory),
+                        command=build(query, directory, location.ignore),
                     )
                 )
     return searches

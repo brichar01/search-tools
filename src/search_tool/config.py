@@ -23,11 +23,13 @@ class Location:
         tools: Canonical tool names, in the order they run.
         directory: Root that directory tools search, or `None` where every tool
             searches a system or remote source.
+        ignore: Directory names every tool prunes, matched at any depth.
     """
 
     name: str
     tools: tuple[str, ...]
     directory: Path | None = None
+    ignore: tuple[str, ...] = ()
 
 
 def default_config_path() -> Path:
@@ -68,6 +70,28 @@ def builtin_locations(tldr_dir: Path) -> dict[str, Location]:
     }
 
 
+def parse_ignore(name: object, raw: object) -> tuple[str, ...]:
+    """Return the directory names a leaf prunes.
+
+    Args:
+        name: Location name, used in the error message.
+        raw: The `ignore` value, or `None` where the leaf has none.
+
+    Raises:
+        ConfigError: The value is not a list of non-empty directory names.
+    """
+    if raw is None:
+        return ()
+    if isinstance(raw, str) or not isinstance(raw, list):
+        raise ConfigError(f"Location {name!r}: ignore must be a list of names")
+    names = []
+    for entry in raw:
+        if not isinstance(entry, str) or not entry.strip():
+            raise ConfigError(f"Location {name!r}: {entry!r} is not a directory name")
+        names.append(entry)
+    return tuple(names)
+
+
 def parse_config(document: object) -> dict[str, Location]:
     """Return the locations a parsed config document describes.
 
@@ -75,8 +99,9 @@ def parse_config(document: object) -> dict[str, Location]:
         document: The object `yaml.safe_load` returned, or `None` for an empty file.
 
     Raises:
-        ConfigError: A leaf is missing `tools`, or names a tool that needs a
-            directory without giving one.
+        ConfigError: A leaf is missing `tools`, names a tool that needs a
+            directory without giving one, or lists something other than
+            directory names under `ignore`.
     """
     if document is None:
         return {}
@@ -91,6 +116,7 @@ def parse_config(document: object) -> dict[str, Location]:
         if not raw_tools:
             raise ConfigError(f"Location {name!r} lists no tools")
         directory = leaf.get("directory")
+        ignore = parse_ignore(name, leaf.get("ignore"))
         tools = []
         for raw_tool in raw_tools:
             try:
@@ -106,6 +132,7 @@ def parse_config(document: object) -> dict[str, Location]:
             name=str(name),
             tools=tuple(tools),
             directory=expand(directory) if directory is not None else None,
+            ignore=ignore,
         )
     return locations
 

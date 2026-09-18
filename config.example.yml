@@ -1,6 +1,7 @@
 source:
   directory: $HOME/src
   tools: [ast, ripgrep, ripgrep-files]
+  ignore: [.venv, node_modules, target]
 
 notes:
   directory: $HOME/personal

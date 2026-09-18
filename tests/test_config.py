@@ -24,6 +24,18 @@ def test_parse_config_resolves_aliases_and_paths(monkeypatch, tmp_path):
     assert locations["wiki"] == Location("wiki", ("rovo",), None)
 
 
+def test_parse_config_reads_the_ignore_list():
+    locations = parse_config(
+        {"source": {"directory": "/tmp", "tools": ["rg"], "ignore": [".venv", "dist"]}}
+    )
+    assert locations["source"].ignore == (".venv", "dist")
+
+
+def test_parse_config_defaults_the_ignore_list_to_empty():
+    locations = parse_config({"source": {"directory": "/tmp", "tools": ["rg"]}})
+    assert locations["source"].ignore == ()
+
+
 def test_parse_config_accepts_an_empty_document():
     assert parse_config(None) == {}
 
@@ -35,6 +47,9 @@ def test_parse_config_accepts_an_empty_document():
         {"source": {"directory": "/tmp", "tools": ["nope"]}},
         {"source": {"tools": ["rg"]}},
         {"source": ["rg"]},
+        {"source": {"directory": "/tmp", "tools": ["rg"], "ignore": ".venv"}},
+        {"source": {"directory": "/tmp", "tools": ["rg"], "ignore": [3]}},
+        {"source": {"directory": "/tmp", "tools": ["rg"], "ignore": [" "]}},
         ["source"],
     ],
 )

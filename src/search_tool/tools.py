@@ -18,6 +18,9 @@ from search_tool.parsers import (
 Command = list[list[str]]
 """A pipeline of argument lists, each stage reading the stdout of the one before."""
 
+Build = Callable[[str, Path | None, tuple[str, ...]], Command]
+"""Takes the query, the directory and the ignored directory names."""
+
 
 @dataclass(frozen=True)
 class Tool:
@@ -27,7 +30,8 @@ class Tool:
         name: Canonical name, as a config file writes it.
         kind: Search kind, used by the `--kind` filter.
         needs_directory: Whether the tool searches a directory on disk.
-        build: Takes the query and the directory and returns the command pipeline.
+        build: Takes the query, the directory and the directory names to ignore,
+            and returns the command pipeline.
         build_json: The same for the machine-readable mode of the tool. Tools
             that only ever list paths use the one command for both.
         parse: Turns the standard output of `build_json` into hits.
@@ -36,12 +40,32 @@ class Tool:
     name: str
     kind: str
     needs_directory: bool
-    build: Callable[[str, Path | None], Command]
-    build_json: Callable[[str, Path | None], Command]
+    build: Build
+    build_json: Build
     parse: Callable[[str], list[Hit]]
 
 
-def _ripgrep(query: str, directory: Path | None) -> Command:
+def _rg_globs(ignore: tuple[str, ...]) -> list[str]:
+    """Return the ripgrep globs that prune each ignored directory name."""
+    return [f"--glob=!{name}/" for name in ignore]
+
+
+def _ck_excludes(ignore: tuple[str, ...]) -> list[str]:
+    """Return the ck flags that prune each ignored directory name."""
+    return [argument for name in ignore for argument in ("--exclude", name)]
+
+
+def _ast_globs(ignore: tuple[str, ...]) -> list[str]:
+    """Return the ast-grep globs that prune each ignored directory name."""
+    return [f"--globs=!{name}/" for name in ignore]
+
+
+def _skips(ignore: tuple[str, ...]) -> list[str]:
+    """Return the search-tool-semantic flags that prune each ignored name."""
+    return [argument for name in ignore for argument in ("--skip", name)]
+
+
+def _ripgrep(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
     return [
         [
             "rg",
@@ -49,6 +73,7 @@ def _ripgrep(query: str, directory: Path | None) -> Command:
             "never",
             "--line-number",
             "--with-filename",
+            *_rg_globs(ignore),
             "--",
             query,
             str(directory),
@@ -56,55 +81,93 @@ def _ripgrep(query: str, directory: Path | None) -> Command:
     ]
 
 
-def _ripgrep_files(query: str, directory: Path | None) -> Command:
+def _ripgrep_files(
+    query: str, directory: Path | None, ignore: tuple[str, ...]
+) -> Command:
     return [
-        ["rg", "--files", str(directory)],
+        ["rg", "--files", *_rg_globs(ignore), str(directory)],
         ["rg", "--color", "never", "--", query],
     ]
 
 
-def _fzf(query: str, directory: Path | None) -> Command:
-    return [["rg", "--files", str(directory)], ["fzf", "--filter", query]]
+def _fzf(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
+    # The fzf walker only runs on a TTY stdin and reads no .gitignore,
+    # so ripgrep lists the paths and prunes them.
+    return [
+        ["rg", "--files", *_rg_globs(ignore), str(directory)],
+        ["fzf", "--filter", query],
+    ]
 
 
-def _ripgrep_json(query: str, directory: Path | None) -> Command:
-    return [["rg", "--json", "--", query, str(directory)]]
+def _ripgrep_json(
+    query: str, directory: Path | None, ignore: tuple[str, ...]
+) -> Command:
+    return [["rg", "--json", *_rg_globs(ignore), "--", query, str(directory)]]
 
 
-def _ck_semantic(query: str, directory: Path | None) -> Command:
-    return [["ck", "--sem", query, str(directory)]]
+def _ck_semantic(
+    query: str, directory: Path | None, ignore: tuple[str, ...]
+) -> Command:
+    return [["ck", "--sem", *_ck_excludes(ignore), query, str(directory)]]
 
 
-def _ck_semantic_json(query: str, directory: Path | None) -> Command:
-    return [["ck", "--sem", "--jsonl", query, str(directory)]]
+def _ck_semantic_json(
+    query: str, directory: Path | None, ignore: tuple[str, ...]
+) -> Command:
+    return [["ck", "--sem", "--jsonl", *_ck_excludes(ignore), query, str(directory)]]
 
 
-def _semantic(query: str, directory: Path | None) -> Command:
-    return [["search-tool-semantic", query, str(directory)]]
+def _semantic(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
+    return [["search-tool-semantic", *_skips(ignore), query, str(directory)]]
 
 
-def _semantic_json(query: str, directory: Path | None) -> Command:
-    return [["search-tool-semantic", "--json", query, str(directory)]]
+def _semantic_json(
+    query: str, directory: Path | None, ignore: tuple[str, ...]
+) -> Command:
+    return [["search-tool-semantic", "--json", *_skips(ignore), query, str(directory)]]
 
 
-def _ast_grep(query: str, directory: Path | None) -> Command:
-    return [["ast-grep", "run", "--color", "never", "--pattern", query, str(directory)]]
+def _ast_grep(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
+    return [
+        [
+            "ast-grep",
+            "run",
+            "--color",
+            "never",
+            *_ast_globs(ignore),
+            "--pattern",
+            query,
+            str(directory),
+        ]
+    ]
 
 
-def _ast_grep_json(query: str, directory: Path | None) -> Command:
-    return [["ast-grep", "run", "--json=compact", "--pattern", query, str(directory)]]
+def _ast_grep_json(
+    query: str, directory: Path | None, ignore: tuple[str, ...]
+) -> Command:
+    return [
+        [
+            "ast-grep",
+            "run",
+            "--json=compact",
+            *_ast_globs(ignore),
+            "--pattern",
+            query,
+            str(directory),
+        ]
+    ]
 
 
-def _manual(query: str, directory: Path | None) -> Command:
+def _manual(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
     return [["man", "-K", "-w", "--regex", query]]
 
 
-def _rovo(query: str, directory: Path | None) -> Command:
+def _rovo(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
     return [["twg", "rovo", "search", query, "--app", "confluence"]]
 
 
-def _rovo_json(query: str, directory: Path | None) -> Command:
-    return [[*_rovo(query, directory)[0], "--output", "json"]]
+def _rovo_json(query: str, directory: Path | None, ignore: tuple[str, ...]) -> Command:
+    return [[*_rovo(query, directory, ignore)[0], "--output", "json"]]
 
 
 TOOLS = {

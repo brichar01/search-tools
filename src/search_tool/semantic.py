@@ -36,32 +36,40 @@ class Line:
     text: str
 
 
-def find_files(paths: Iterable[Path]) -> Iterator[Path]:
+def find_files(paths: Iterable[Path], skip: Iterable[str] = ()) -> Iterator[Path]:
     """Yield the files to read, walking each directory given.
 
     Args:
         paths: Files and directories named on the command line.
+        skip: Directory names to prune, matched at any depth.
 
     Yields:
-        Every file under a directory whose path holds no dot component, and
-        every file named directly.
+        Every file under a directory whose path holds no dot component and no
+        skipped name, and every file named directly.
     """
+    pruned = set(skip)
     for path in paths:
         if not path.is_dir():
             yield path
             continue
         for child in sorted(path.rglob("*")):
             parts = child.relative_to(path).parts
-            if child.is_file() and not any(part.startswith(".") for part in parts):
-                yield child
+            if not child.is_file():
+                continue
+            if any(part.startswith(".") or part in pruned for part in parts):
+                continue
+            yield child
 
 
-def read_lines(paths: list[Path], stdin: TextIO) -> list[Line]:
+def read_lines(
+    paths: list[Path], stdin: TextIO, skip: Iterable[str] = ()
+) -> list[Line]:
     """Return every line worth embedding, from the paths or from standard input.
 
     Args:
         paths: Files and directories to read. Empty reads `stdin` instead.
         stdin: Stream read where no path is given.
+        skip: Directory names to prune while walking the paths.
 
     Returns:
         The lines that hold something other than whitespace. A file that is not
@@ -74,7 +82,7 @@ def read_lines(paths: list[Path], stdin: TextIO) -> list[Line]:
             if text.strip()
         ]
     lines = []
-    for path in find_files(paths):
+    for path in find_files(paths, skip):
         try:
             content = path.read_text()
         except OSError, UnicodeDecodeError:
@@ -179,6 +187,13 @@ def parse_args() -> argparse.Namespace:
         help="Embedding model to load (default: %(default)s)",
     )
     parser.add_argument(
+        "--skip",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Directory name to prune, repeatable",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
@@ -194,6 +209,7 @@ def main(
     threshold: float,
     model: str,
     json_output: bool,
+    skip: list[str],
 ) -> int:
     """Rank the lines of the input against the query and write the closest.
 
@@ -204,6 +220,7 @@ def main(
         threshold: Lowest cosine similarity to return.
         model: Embedding model to load, by Hugging Face name or local path.
         json_output: Write JSON records rather than `source:line:text`.
+        skip: Directory names to prune while walking the paths.
 
     Returns:
         2 where the model cannot be loaded, 0 where anything ranked above the
@@ -215,7 +232,8 @@ def main(
     except OSError as error:
         print(f"{model}: {error}", file=sys.stderr)
         return 2
-    hits = rank(embedder, query, read_lines(paths, sys.stdin), top_k, threshold)
+    lines = read_lines(paths, sys.stdin, skip)
+    hits = rank(embedder, query, lines, top_k, threshold)
     write_hits(hits, json_output, sys.stdout)
     return 0 if hits else 1
 
@@ -231,6 +249,7 @@ def run() -> None:
             threshold=arguments.threshold,
             model=arguments.model,
             json_output=arguments.json_output,
+            skip=arguments.skip,
         )
     )
 

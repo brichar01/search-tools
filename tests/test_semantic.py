@@ -22,6 +22,18 @@ def test_read_lines_walks_directories_and_skips_dot_paths(tmp_path):
     assert lines[0].source == str(tmp_path / "notes.txt")
 
 
+def test_read_lines_prunes_skipped_directory_names(tmp_path):
+    (tmp_path / "notes.txt").write_text("alpha\n")
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "bundle.txt").write_text("beta\n")
+    (tmp_path / "src" / "dist").mkdir(parents=True)
+    (tmp_path / "src" / "dist" / "nested.txt").write_text("gamma\n")
+
+    lines = read_lines([tmp_path], io.StringIO(), ["dist"])
+
+    assert [line.text for line in lines] == ["alpha"]
+
+
 def test_read_lines_reads_a_file_named_directly(tmp_path):
     path = tmp_path / "notes.txt"
     path.write_text("alpha\n")
@@ -64,6 +76,7 @@ def test_main_writes_json_records_for_stdin(monkeypatch, capsys):
         threshold=0.0,
         model=DEFAULT_MODEL,
         json_output=True,
+        skip=[],
     )
 
     record = json.loads(capsys.readouterr().out)
@@ -82,6 +95,7 @@ def test_main_reports_a_model_it_cannot_load(capsys):
         threshold=0.0,
         model="minishlab/no-such-model",
         json_output=False,
+        skip=[],
     )
     assert status == 2
     assert "no-such-model" in capsys.readouterr().err
@@ -98,6 +112,7 @@ def test_main_exits_one_where_nothing_ranks(monkeypatch, capsys):
         threshold=0.99,
         model=DEFAULT_MODEL,
         json_output=False,
+        skip=[],
     )
 
     assert status == 1

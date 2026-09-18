@@ -21,3 +21,9 @@ def test_plan_indexes_covers_every_indexed_directory_once(tmp_path):
 def test_plan_indexes_skips_locations_without_an_indexed_tool(tmp_path):
     assert plan_indexes([Location("man", ("man",))], None) == []
     assert plan_indexes([Location("source", ("rg",), tmp_path)], None) == []
+
+
+def test_plan_indexes_prunes_the_ignored_directories(tmp_path):
+    locations = [Location("source", ("ck",), tmp_path, (".venv",))]
+    (index,) = plan_indexes(locations, None)
+    assert index.command == [["ck", "--index", "", "--exclude", ".venv", str(tmp_path)]]
