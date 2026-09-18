@@ -12,6 +12,7 @@ from search_tool.parsers import (
     parse_paths,
     parse_ripgrep,
     parse_rovo,
+    parse_semantic,
 )
 
 Command = list[list[str]]
@@ -62,6 +63,10 @@ def _ripgrep_files(query: str, directory: Path | None) -> Command:
     ]
 
 
+def _fzf(query: str, directory: Path | None) -> Command:
+    return [["rg", "--files", str(directory)], ["fzf", "--filter", query]]
+
+
 def _ripgrep_json(query: str, directory: Path | None) -> Command:
     return [["rg", "--json", "--", query, str(directory)]]
 
@@ -72,6 +77,14 @@ def _ck_semantic(query: str, directory: Path | None) -> Command:
 
 def _ck_semantic_json(query: str, directory: Path | None) -> Command:
     return [["ck", "--sem", "--jsonl", query, str(directory)]]
+
+
+def _semantic(query: str, directory: Path | None) -> Command:
+    return [["search-tool-semantic", query, str(directory)]]
+
+
+def _semantic_json(query: str, directory: Path | None) -> Command:
+    return [["search-tool-semantic", "--json", query, str(directory)]]
 
 
 def _ast_grep(query: str, directory: Path | None) -> Command:
@@ -99,7 +112,9 @@ TOOLS = {
     for tool in (
         Tool("rg", "regex", True, _ripgrep, _ripgrep_json, parse_ripgrep),
         Tool("rg-files", "files", True, _ripgrep_files, _ripgrep_files, parse_paths),
+        Tool("fzf", "files", True, _fzf, _fzf, parse_paths),
         Tool("ck", "semantic", True, _ck_semantic, _ck_semantic_json, parse_ck),
+        Tool("m2v", "semantic", True, _semantic, _semantic_json, parse_semantic),
         Tool("ast", "ast", True, _ast_grep, _ast_grep_json, parse_ast_grep),
         Tool("man", "regex", False, _manual, _manual, parse_man),
         Tool("rovo", "remote", False, _rovo, _rovo_json, parse_rovo),
@@ -109,6 +124,8 @@ TOOLS = {
 ALIASES = {
     "ripgrep": "rg",
     "ripgrep-files": "rg-files",
+    "model2vec": "m2v",
+    "fuzzy": "fzf",
     "ast-grep": "ast",
     "sg": "ast",
     "confluence": "rovo",

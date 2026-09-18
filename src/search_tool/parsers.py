@@ -87,6 +87,21 @@ def parse_ck(stdout: str) -> list[Hit]:
     return hits
 
 
+def parse_semantic(stdout: str) -> list[Hit]:
+    """Return the lines of `search-tool-semantic --json`."""
+    return [
+        Hit(
+            key=record["path"],
+            kind="file",
+            line=record["line"],
+            end_line=record["line"],
+            text=record["text"],
+            score=record["score"],
+        )
+        for record in _records(stdout)
+    ]
+
+
 def parse_ast_grep(stdout: str) -> list[Hit]:
     """Return the matches of `ast-grep run --json=compact`.
 

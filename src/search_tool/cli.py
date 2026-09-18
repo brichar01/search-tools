@@ -6,7 +6,6 @@ search it, then runs every selected tool and labels its output.
 
 import argparse
 import json
-import os
 import re
 import sys
 from collections import Counter
@@ -18,34 +17,16 @@ from search_tool.config import (
     ConfigError,
     Location,
     builtin_locations,
+    default_config_path,
+    default_tldr_dir,
     load_config,
     select_locations,
 )
+from search_tool.precache import main as run_precache
 from search_tool.runner import Result, plan_searches, run_search
 from search_tool.tools import KINDS
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
-
-
-def default_config_path() -> Path:
-    """Return the config file to read where `--config` is not given."""
-    override = os.environ.get("SEARCH_TOOL_CONFIG")
-    if override:
-        return Path(override)
-    config_home = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
-    return Path(config_home) / "search-tool" / "config.yml"
-
-
-def default_tldr_dir() -> Path:
-    """Return the cheatsheet directory where `--tldr-dir` is not given.
-
-    The tldr cheatsheets are a submodule of this repository, so the default is
-    the checkout the package was installed from.
-    """
-    override = os.environ.get("SEARCH_TOOL_TLDR_DIR")
-    if override:
-        return Path(override)
-    return Path(__file__).resolve().parents[2] / "tldr" / "pages"
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,7 +39,11 @@ def parse_args() -> argparse.Namespace:
             "built-in tldr, man and confluence locations."
         ),
     )
-    parser.add_argument("query", help="Text, regular expression or AST pattern")
+    parser.add_argument(
+        "query",
+        nargs="?",
+        help="Text, regular expression or AST pattern. A location with --precache",
+    )
     parser.add_argument(
         "locations", nargs="*", help="Config leaves to search, all of them by default"
     )
@@ -91,12 +76,25 @@ def parse_args() -> argparse.Namespace:
         help="Write JSON records for each search and each merged candidate",
     )
     parser.add_argument(
+        "-p",
+        "--precache",
+        action="store_true",
+        help="Build the index of every semantic tool and search nothing",
+    )
+    parser.add_argument(
         "--tldr-dir",
         type=Path,
         default=default_tldr_dir(),
         help="Cheatsheet pages of the tldr submodule (default: %(default)s)",
     )
-    return parser.parse_args()
+    arguments = parser.parse_args()
+    if arguments.precache:
+        if arguments.query is not None:
+            arguments.locations.insert(0, arguments.query)
+            arguments.query = None
+    elif arguments.query is None:
+        parser.error("a query is required")
+    return arguments
 
 
 def label(result: Result) -> str:
@@ -162,29 +160,42 @@ def write_records(results: list[Result], query: str, stream) -> int:
 
 
 def main(
-    query: str,
+    query: str | None,
     locations: list[str],
     config: Path,
     subdir: str | None,
     kinds: list[str],
     json_output: bool,
+    precache: bool,
     tldr_dir: Path,
 ) -> int:
     """Run every selected search and write the results to stdout.
 
     Args:
-        query: Text, regular expression or AST pattern to search for.
+        query: Text, regular expression or AST pattern to search for. Ignored
+            where `precache` is set.
         locations: Config leaves to search. Empty searches every location.
         config: YAML config file naming each location and its tools.
         subdir: Glob limiting each location to matching subdirectories.
         kinds: Search kinds to run. Empty runs every kind.
         json_output: Write JSON records for each search and each candidate,
             rather than the labelled output of each tool.
+        precache: Build the index of every semantic tool instead of searching.
         tldr_dir: Cheatsheet pages of the tldr submodule.
 
     Returns:
-        2 where a tool failed, 0 where anything matched, otherwise 1.
+        2 where a tool failed, 0 where anything matched, otherwise 1. Where
+        `precache` is set, 2 where an index build failed, otherwise 0.
     """
+    if precache:
+        return run_precache(
+            locations=locations,
+            config=config,
+            subdir=subdir,
+            dry_run=False,
+            tldr_dir=tldr_dir,
+        )
+
     try:
         known: dict[str, Location] = load_config(config)
         for name, location in builtin_locations(tldr_dir).items():
@@ -224,6 +235,7 @@ def run() -> None:
             subdir=arguments.subdir,
             kinds=arguments.kinds,
             json_output=arguments.json_output,
+            precache=arguments.precache,
             tldr_dir=arguments.tldr_dir,
         )
     )

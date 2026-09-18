@@ -80,3 +80,12 @@ def test_run_search_reports_a_missing_program():
     result = run_search(search)
     assert result.exit_code == 127
     assert "not installed" in result.stderr
+
+
+def test_plan_searches_pipes_paths_through_fzf(tmp_path):
+    locations = [Location("source", ("fzf",), tmp_path)]
+    (search,) = plan_searches(locations, "probe", [], None)
+    assert search.command == [
+        ["rg", "--files", str(tmp_path)],
+        ["fzf", "--filter", "probe"],
+    ]

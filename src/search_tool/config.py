@@ -1,6 +1,7 @@
 """Search locations, built in and loaded from a YAML config file."""
 
 from dataclasses import dataclass
+from os import environ
 from os.path import expanduser, expandvars
 from pathlib import Path
 
@@ -27,6 +28,26 @@ class Location:
     name: str
     tools: tuple[str, ...]
     directory: Path | None = None
+
+
+def default_config_path() -> Path:
+    """Return the config file to read where `--config` is not given."""
+    override = environ.get("SEARCH_TOOL_CONFIG")
+    if override:
+        return Path(override)
+    return Path.home() / ".config" / "search-tool" / "config.yml"
+
+
+def default_tldr_dir() -> Path:
+    """Return the cheatsheet directory where `--tldr-dir` is not given.
+
+    The tldr cheatsheets are a submodule of this repository, so the default is
+    the checkout the package was installed from.
+    """
+    override = environ.get("SEARCH_TOOL_TLDR_DIR")
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[2] / "tldr" / "pages"
 
 
 def expand(directory: str) -> Path:

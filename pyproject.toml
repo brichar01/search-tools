@@ -4,10 +4,17 @@ version = "0.1.0"
 description = "Aggregate local, cheatsheet, manual and Confluence searches behind one command"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["pyyaml>=6.0.2"]
+dependencies = [
+    "pyyaml>=6.0.2",
+    "model2vec>=0.9",
+    "numpy>=2.0",
+    "huggingface-hub>=1.0",
+]
 
 [project.scripts]
 search-tool = "search_tool.cli:run"
+search-tool-precache = "search_tool.precache:run"
+search-tool-semantic = "search_tool.semantic:run"
 
 [build-system]
 requires = ["hatchling"]

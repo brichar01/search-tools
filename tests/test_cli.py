@@ -1,10 +1,12 @@
 import json
+import sys
 
 import pytest
 import yaml
 
 from conftest import require_program
-from search_tool.cli import default_config_path, default_tldr_dir, main
+from search_tool.cli import main, parse_args
+from search_tool.config import default_config_path, default_tldr_dir
 
 
 @pytest.fixture
@@ -29,6 +31,7 @@ def search(workspace, tmp_path, **overrides):
         "subdir": None,
         "kinds": [],
         "json_output": False,
+        "precache": False,
         "tldr_dir": tmp_path / "tldr",
     }
     return main(**(arguments | overrides))
@@ -110,7 +113,25 @@ def test_defaults_come_from_the_environment(monkeypatch, tmp_path):
     assert default_tldr_dir() == tmp_path / "pages"
 
 
-def test_the_default_config_follows_xdg(monkeypatch, tmp_path):
+def test_the_default_config_sits_under_the_home_config_directory(monkeypatch, tmp_path):
     monkeypatch.delenv("SEARCH_TOOL_CONFIG", raising=False)
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert default_config_path() == tmp_path / "search-tool" / "config.yml"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert default_config_path() == tmp_path / ".config" / "search-tool" / "config.yml"
+
+
+def test_precache_reads_the_first_positional_as_a_location(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["search-tool", "--precache", "source", "notes"])
+    arguments = parse_args()
+    assert arguments.query is None
+    assert arguments.locations == ["source", "notes"]
+
+
+def test_a_search_without_a_query_exits(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["search-tool"])
+    with pytest.raises(SystemExit):
+        parse_args()
+
+
+def test_precache_indexes_instead_of_searching(workspace, tmp_path, capsys):
+    assert search(workspace, tmp_path, query=None, precache=True) == 0
+    assert capsys.readouterr().out == ""
