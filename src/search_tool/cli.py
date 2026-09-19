@@ -64,12 +64,18 @@ def parse_args() -> argparse.Namespace:
         action="append",
         choices=KIND_FLAGS,
         dest="kinds",
-        default=[],
+        default=["rg", "fzf", "ck", "remote", "hist"],
         metavar="KIND",
         help=(
             "Only run tools of this kind, repeatable. Prefix with ! to drop a "
             f"kind instead, as in !remote. One of: {', '.join(KINDS)}"
         ),
+    )
+    parser.add_argument(
+        "-S",
+        "--case-sensitive",
+        action="store_true",
+        help="Match the case of the query, which every tool folds by default",
     )
     parser.add_argument(
         "--json",
@@ -168,6 +174,7 @@ def main(
     config: Path,
     subdir: str | None,
     kinds: list[str],
+    case_sensitive: bool,
     json_output: bool,
     precache: bool,
     init: bool,
@@ -182,6 +189,7 @@ def main(
         subdir: Glob limiting each location to matching subdirectories.
         kinds: Search kinds to run, each optionally negated with `!`. Empty
             runs every kind.
+        case_sensitive: Match the case of the query, rather than folding it.
         json_output: Write JSON records for each search and each candidate,
             rather than the labelled output of each tool.
         precache: Build the index of every semantic tool instead of searching.
@@ -217,7 +225,14 @@ def main(
     failed = False
     matched = False
     results = []
-    for search in plan_searches(chosen, query, kinds, subdir, structured=json_output):
+    for search in plan_searches(
+        chosen,
+        query,
+        kinds,
+        subdir,
+        structured=json_output,
+        case_sensitive=case_sensitive,
+    ):
         result = run_search(search)
         results.append(result)
         if not json_output:
@@ -244,6 +259,7 @@ def run() -> None:
             config=arguments.config,
             subdir=arguments.subdir,
             kinds=arguments.kinds,
+            case_sensitive=arguments.case_sensitive,
             json_output=arguments.json_output,
             precache=arguments.precache,
             init=arguments.init,

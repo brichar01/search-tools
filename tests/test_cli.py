@@ -30,6 +30,7 @@ def search(workspace, tmp_path, **overrides):
         "config": config,
         "subdir": None,
         "kinds": [],
+        "case_sensitive": False,
         "json_output": False,
         "precache": False,
         "init": False,
@@ -135,6 +136,7 @@ def test_history_dedupes_repeated_commands(tmp_path, capsys):
         config=config,
         subdir=None,
         kinds=[],
+        case_sensitive=False,
         json_output=True,
         precache=False,
         init=False,
@@ -164,6 +166,7 @@ def test_init_writes_the_example_config(tmp_path, capsys):
         config=path,
         subdir=None,
         kinds=[],
+        case_sensitive=False,
         json_output=False,
         precache=False,
         init=True,
@@ -183,6 +186,7 @@ def test_init_refuses_to_overwrite(tmp_path):
             config=path,
             subdir=None,
             kinds=[],
+            case_sensitive=False,
             json_output=False,
             precache=False,
             init=True,
@@ -204,6 +208,7 @@ def test_a_config_naming_nothing_points_at_init(tmp_path):
             config=tmp_path / "absent.yml",
             subdir=None,
             kinds=[],
+            case_sensitive=False,
             json_output=False,
             precache=False,
             init=False,
@@ -232,3 +237,15 @@ def test_a_search_without_a_query_exits(monkeypatch):
 def test_precache_indexes_instead_of_searching(workspace, tmp_path, capsys):
     assert search(workspace, tmp_path, query=None, precache=True) == 0
     assert capsys.readouterr().out == ""
+
+
+def test_the_search_folds_case_by_default(workspace, tmp_path, capsys):
+    require_program("rg")
+    assert search(workspace, tmp_path, query="SATURATION") == 0
+    assert "saturation = 0.9" in capsys.readouterr().out
+
+
+def test_case_sensitive_drops_the_mismatched_query(workspace, tmp_path, capsys):
+    require_program("rg")
+    assert search(workspace, tmp_path, query="SATURATION", case_sensitive=True) == 1
+    assert "saturation = 0.9" not in capsys.readouterr().out

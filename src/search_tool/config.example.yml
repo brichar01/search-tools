@@ -1,6 +1,7 @@
 # Every location search-tool searches is declared here. Nothing is built in, so
 # a location left out of this file is never searched. Delete what this machine
-# cannot reach: tldr needs the cheatsheets cloned, confluence needs twg.
+# cannot reach: tldr needs the cheatsheets cloned, confluence needs twg, help
+# needs search-tool-help-index to have run.
 
 source:
   directory: $HOME/src
@@ -13,6 +14,10 @@ notes:
 
 man:
   tools: [man]
+
+help:
+  directory: $HOME/.cache/search-tool/help
+  tools: [fzf, rg, ck]
 
 history:
   directory: $HOME/.zsh_history

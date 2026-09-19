@@ -1,6 +1,8 @@
 import io
 import json
 
+import numpy as np
+
 from conftest import require_model
 from search_tool.semantic import DEFAULT_MODEL, Line, main, rank, read_lines
 
@@ -117,3 +119,34 @@ def test_main_exits_one_where_nothing_ranks(monkeypatch, capsys):
 
     assert status == 1
     assert capsys.readouterr().out == ""
+
+
+class Recorder:
+    """A model that keeps what it was asked to embed."""
+
+    def __init__(self):
+        self.seen = []
+
+    def encode(self, texts):
+        """Record the texts and return one unit vector each."""
+        self.seen.extend(texts)
+        return np.ones((len(texts), 3))
+
+
+def test_rank_folds_the_query_and_the_lines_by_default():
+    model = Recorder()
+    lines = [Line("-", 1, "Mixed Case Line")]
+
+    hits = rank(model, "Mixed Query", lines, top_k=1, threshold=-1.0)
+
+    assert model.seen == ["mixed query", "mixed case line"]
+    assert hits[0][0].text == "Mixed Case Line"
+
+
+def test_rank_keeps_the_case_where_asked():
+    model = Recorder()
+    lines = [Line("-", 1, "Mixed Case Line")]
+
+    rank(model, "Mixed Query", lines, top_k=1, threshold=-1.0, case_sensitive=True)
+
+    assert model.seen == ["Mixed Query", "Mixed Case Line"]

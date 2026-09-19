@@ -7,6 +7,12 @@ A YAML config file names each place, called a location, and the tools that
 search it. Every location comes from that file, so what a search covers is
 whatever the file says and nothing else.
 
+It is a jumping off point for the times you cannot remember where something
+was, or where you noted it down. Code, notes, shell history, cheatsheets,
+manual pages, command help and Confluence each have their own search, and this
+runs them together so the answer comes back with the place attached. Searching
+that place properly is the step after, not this one.
+
 ## Install
 
 The cheatsheets are a submodule, so clone with them:
@@ -20,8 +26,9 @@ uv sync
 An existing checkout picks them up with
 `git submodule update --init --depth 1`.
 
-To put `search-tool` and `search-tool-precache` on the path, install the
-checkout as a tool. `uv` writes both scripts to `~/.local/bin`:
+To put `search-tool`, `search-tool-precache`, `search-tool-semantic` and
+`search-tool-help-index` on the path, install the checkout as a tool. `uv`
+writes each script to `~/.local/bin`:
 
 ```sh
 uv tool install --editable ~/src/search-tool
@@ -106,6 +113,61 @@ history:
 The example writes `$HOME/.zsh_history`, which is the zsh default. Change it
 where your shell keeps history elsewhere.
 
+## Help pages
+
+`search-tool-help-index` captures the help text of the commands you use and
+writes it where the directory tools can search it. Each command writes
+`<cmd>_help.txt` from its `--help` output, and `<cmd>_man.txt` from its manual
+page where it has one, into `~/.cache/search-tool/help`:
+
+```sh
+search-tool-help-index                  # every command in the list
+search-tool-help-index git podman       # only these
+search-tool-help-index --dry-run
+```
+
+Point a leaf at that directory to search it:
+
+```yaml
+help:
+  directory: $HOME/.cache/search-tool/help
+  tools: [fzf, rg, ck]
+```
+
+`fzf` matches the file name, so it answers which command it was, `rg` matches
+the text of the pages and `ck` matches their meaning. Run
+`search-tool --precache help` after a capture, because `ck` indexes the
+directory.
+
+| Option | Does |
+|---|---|
+| `-o`, `--output` | Directory to write to, `~/.cache/search-tool/help` by default |
+| `-l`, `--list` | File of command names, one per line, the packaged list by default |
+| `-t`, `--timeout` | Seconds to wait for each command, 5.0 by default |
+| `-f`, `--force` | Recapture pages that are already current |
+| `-n`, `--dry-run` | Write what would be captured without capturing it |
+
+A page is recaptured where the program, or the manual page, is newer than what
+was written from it, so a second run costs almost nothing. A command that is
+not installed is skipped, so one list serves several machines.
+
+The packaged list holds around 200 common commands. Copy it and pass `--list`
+to search your own set:
+
+```sh
+search-tool-help-index --list ~/.config/search-tool/commands.txt
+```
+
+Capturing runs each command. `--help` comes first, and `-h` follows only where
+that writes nothing or is rejected, because a program that rejects `--help`
+often writes its usage anyway. `shutdown`, `reboot`, `poweroff`, `halt` and
+`dd` are never given `-h`, because it acts rather than writing usage. Each run
+gets the `--timeout`, closed standard input and a plain terminal.
+
+Only the top-level manual page of a command is captured, so `git_man.txt` holds
+`man git` and not `man git-push`. The `man` leaf covers the rest, because
+`man -K` searches every installed page.
+
 ## Tools
 
 | Tool | Kind | Runs |
@@ -139,6 +201,7 @@ search-tool "saturation" source --subdir 'proj-*'
 search-tool "saturation" history                # what you ran before
 search-tool "saturation" --kind semantic --kind regex
 search-tool "saturation" --kind '!remote'
+search-tool "Saturation" --case-sensitive
 search-tool "saturation" --json
 ```
 
@@ -156,6 +219,26 @@ A kind prefixed with `!` is dropped instead, so `--kind '!remote'` runs every
 kind but `remote`. Naming no kind to keep starts from every kind, and naming
 some starts from those, so `--kind regex --kind '!regex'` runs nothing. Quote
 the argument, because an unquoted `!` is history expansion in bash and zsh.
+
+## Case
+
+Every search folds case, so `saturation` and `Saturation` return the same
+lines. `-S`, `--case-sensitive` matches the query as it is written instead.
+
+| Tool | Folded | Case-sensitive |
+|---|---|---|
+| `rg`, `ripgrep-files`, `hist` | `--ignore-case` | `--case-sensitive` |
+| `fzf` | `-i` | `+i` |
+| `ck` | `-i` | the ck default |
+| `m2v` | the query and each line lower-cased before embedding | `--case-sensitive` |
+| `man` | `-i` | `-I` |
+| `ast` | neither, an ast-grep pattern matches syntax nodes | |
+| `rovo` | neither, Confluence matches its own way | |
+
+The flag is passed both ways where a tool takes one, so a `RIPGREP_CONFIG_PATH`
+file or an fzf default cannot turn folding back on under `--case-sensitive`.
+`ast` and `rovo` return the same results either way, so a case-sensitive run
+still has to read them.
 
 ## Precache
 
@@ -185,7 +268,8 @@ status is 2 where an index build failed.
 
 `m2v` runs `search-tool-semantic`, which ships with this package. It embeds
 every line with a model2vec static model and returns the lines closest to the
-query by cosine similarity. The model is a lookup table rather than a network,
+query by cosine similarity. Both the query and the lines are lower-cased first,
+which is as close to case-insensitive as one fixed vector per token gets. The model is a lookup table rather than a network,
 so it loads in under a second and needs no index.
 
 It is also a command of its own, and reads standard input where no path is
@@ -202,6 +286,7 @@ rg -n "def " src | search-tool-semantic "build the search plan" --threshold 0.4
 | `-k`, `--top-k` | How many lines to return, 10 by default |
 | `-t`, `--threshold` | Lowest cosine similarity to return, 0.0 by default |
 | `-m`, `--model` | Model to load, `minishlab/potion-base-8M` by default |
+| `-S`, `--case-sensitive` | Embed the query and the lines as written |
 | `--skip` | Directory name to prune, repeatable |
 | `--json` | One JSON record per line, with its score |
 

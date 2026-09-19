@@ -1,14 +1,11 @@
 import json
 
-from search_tool.parsers import (
-    parse_ast_grep,
-    parse_ck,
-    parse_history,
-    parse_man,
-    parse_paths,
-    parse_ripgrep,
-    parse_rovo,
-)
+from search_tool.tools.ast_grep import parse_ast_grep
+from search_tool.tools.ck import parse_ck
+from search_tool.tools.history import parse_history
+from search_tool.tools.manual import parse_man
+from search_tool.tools.ripgrep import parse_paths, parse_ripgrep
+from search_tool.tools.rovo import parse_rovo
 
 MATCH = json.dumps(
     {

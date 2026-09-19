@@ -2,9 +2,8 @@
 
 from dataclasses import dataclass, field
 
-from search_tool.parsers import Hit
 from search_tool.runner import Result
-from search_tool.tools import TOOLS
+from search_tool.tools import TOOLS, Hit
 
 
 @dataclass(frozen=True)

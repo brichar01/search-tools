@@ -76,6 +76,7 @@ def plan_searches(
     kinds: list[str],
     subdir: str | None,
     structured: bool = False,
+    case_sensitive: bool = False,
 ) -> list[Search]:
     """Return every search to run, in location then tool order.
 
@@ -87,6 +88,8 @@ def plan_searches(
         subdir: Glob limiting each location to matching subdirectories.
         structured: Ask each tool for the output its parser reads, rather than
             the output written for a person.
+        case_sensitive: Match the case of the query. `ast` and `rovo` have no
+            case option and match the same either way.
     """
     wanted = resolve_kinds(kinds)
     searches = []
@@ -105,7 +108,9 @@ def plan_searches(
                         tool=tool.name,
                         kind=tool.kind,
                         directory=directory,
-                        command=build(query, directory, location.ignore),
+                        command=build(
+                            query, directory, location.ignore, case_sensitive
+                        ),
                     )
                 )
     return searches

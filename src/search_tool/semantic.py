@@ -101,6 +101,7 @@ def rank(
     lines: list[Line],
     top_k: int,
     threshold: float,
+    case_sensitive: bool = False,
 ) -> list[tuple[Line, float]]:
     """Return the lines closest to the query, best first.
 
@@ -110,17 +111,21 @@ def rank(
         lines: The lines to rank.
         top_k: How many lines to return at most.
         threshold: Lowest cosine similarity to return.
+        case_sensitive: Embed the query and the lines as they are written. The
+            default folds both to lower case first, which is as close to
+            case-insensitive as a fixed vector per token gets.
 
     Returns:
         Each line with its cosine similarity to the query, highest first.
     """
     if not lines:
         return []
-    query_vector = model.encode([query])[0]
+    fold = str if case_sensitive else str.lower
+    query_vector = model.encode([fold(query)])[0]
     query_norm = np.linalg.norm(query_vector)
     if query_norm == 0:
         return []
-    vectors = model.encode([line.text for line in lines])
+    vectors = model.encode([fold(line.text) for line in lines])
     norms = np.linalg.norm(vectors, axis=1)
     # A line the tokeniser drops entirely embeds to zero.
     norms[norms == 0] = 1.0
@@ -187,6 +192,12 @@ def parse_args() -> argparse.Namespace:
         help="Embedding model to load (default: %(default)s)",
     )
     parser.add_argument(
+        "-S",
+        "--case-sensitive",
+        action="store_true",
+        help="Embed the query and the lines as written, rather than folded",
+    )
+    parser.add_argument(
         "--skip",
         action="append",
         default=[],
@@ -210,6 +221,7 @@ def main(
     model: str,
     json_output: bool,
     skip: list[str],
+    case_sensitive: bool = False,
 ) -> int:
     """Rank the lines of the input against the query and write the closest.
 
@@ -221,6 +233,8 @@ def main(
         model: Embedding model to load, by Hugging Face name or local path.
         json_output: Write JSON records rather than `source:line:text`.
         skip: Directory names to prune while walking the paths.
+        case_sensitive: Embed the query and the lines as written. The default
+            folds both to lower case.
 
     Returns:
         2 where the model cannot be loaded, 0 where anything ranked above the
@@ -233,7 +247,7 @@ def main(
         print(f"{model}: {error}", file=sys.stderr)
         return 2
     lines = read_lines(paths, sys.stdin, skip)
-    hits = rank(embedder, query, lines, top_k, threshold)
+    hits = rank(embedder, query, lines, top_k, threshold, case_sensitive)
     write_hits(hits, json_output, sys.stdout)
     return 0 if hits else 1
 
@@ -250,6 +264,7 @@ def run() -> None:
             model=arguments.model,
             json_output=arguments.json_output,
             skip=arguments.skip,
+            case_sensitive=arguments.case_sensitive,
         )
     )
 

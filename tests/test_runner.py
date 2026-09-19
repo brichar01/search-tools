@@ -69,7 +69,7 @@ def test_plan_searches_filters_by_kind(tmp_path):
     locations = [Location("source", ("rg", "ck", "ast"), tmp_path)]
     searches = plan_searches(locations, "probe", ["semantic", "ast"], None)
     assert [search.tool for search in searches] == ["ck", "ast"]
-    assert searches[0].command == [["ck", "--sem", "probe", str(tmp_path)]]
+    assert searches[0].command == [["ck", "--sem", "-i", "probe", str(tmp_path)]]
 
 
 def test_run_search_collects_output():
@@ -111,7 +111,7 @@ def test_plan_searches_pipes_paths_through_fzf(tmp_path):
     (search,) = plan_searches(locations, "probe", [], None)
     assert search.command == [
         ["rg", "--files", str(tmp_path)],
-        ["fzf", "--filter", "probe"],
+        ["fzf", "-i", "--filter", "probe"],
     ]
 
 
@@ -128,7 +128,7 @@ def test_plan_searches_prunes_the_ignored_directories(tmp_path):
         search.tool: search.command
         for search in plan_searches(locations, "probe", [], None)
     }
-    assert commands["rg"][0][5:7] == ["--glob=!.venv/", "--glob=!dist/"]
+    assert commands["rg"][0][6:8] == ["--glob=!.venv/", "--glob=!dist/"]
     assert commands["rg-files"][0] == [
         "rg",
         "--files",
@@ -140,6 +140,7 @@ def test_plan_searches_prunes_the_ignored_directories(tmp_path):
     assert commands["ck"][0] == [
         "ck",
         "--sem",
+        "-i",
         "--exclude",
         ".venv",
         "--exclude",
@@ -162,7 +163,7 @@ def test_plan_searches_prunes_the_ignored_directories(tmp_path):
 def test_plan_searches_leaves_directoryless_tools_alone(tmp_path):
     locations = [Location("man", ("man",), None, (".venv",))]
     (search,) = plan_searches(locations, "probe", [], None)
-    assert search.command == [["man", "-K", "-w", "--regex", "probe"]]
+    assert search.command == [["man", "-K", "-w", "--regex", "-i", "probe"]]
 
 
 def test_plan_searches_tidies_the_shell_history(tmp_path):
@@ -176,8 +177,41 @@ def test_plan_searches_tidies_the_shell_history(tmp_path):
         "never",
         "--no-filename",
         "--no-line-number",
+        "--ignore-case",
         "--",
         "git",
         str(history),
     ]
     assert search.command[1][0] == "awk"
+
+
+def test_plan_searches_folds_case_by_default(tmp_path):
+    locations = [
+        Location("source", ("rg", "rg-files", "fzf", "ck", "m2v", "man"), tmp_path)
+    ]
+    commands = {
+        search.tool: search.command
+        for search in plan_searches(locations, "Probe", [], None)
+    }
+    assert "--ignore-case" in commands["rg"][0]
+    assert "--ignore-case" in commands["rg-files"][1]
+    assert commands["fzf"][1][1] == "-i"
+    assert "-i" in commands["ck"][0]
+    assert "--case-sensitive" not in commands["m2v"][0]
+    assert "-i" in commands["man"][0]
+
+
+def test_plan_searches_matches_case_where_asked(tmp_path):
+    locations = [
+        Location("source", ("rg", "rg-files", "fzf", "ck", "m2v", "man"), tmp_path)
+    ]
+    commands = {
+        search.tool: search.command
+        for search in plan_searches(locations, "Probe", [], None, case_sensitive=True)
+    }
+    assert "--case-sensitive" in commands["rg"][0]
+    assert "--case-sensitive" in commands["rg-files"][1]
+    assert commands["fzf"][1][1] == "+i"
+    assert "-i" not in commands["ck"][0]
+    assert "--case-sensitive" in commands["m2v"][0]
+    assert "-I" in commands["man"][0]

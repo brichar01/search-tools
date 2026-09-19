@@ -15,6 +15,7 @@ dependencies = [
 search-tool = "search_tool.cli:run"
 search-tool-precache = "search_tool.precache:run"
 search-tool-semantic = "search_tool.semantic:run"
+search-tool-help-index = "search_tool.help_index:run"
 
 [build-system]
 requires = ["hatchling"]
@@ -24,7 +25,11 @@ build-backend = "hatchling.build"
 packages = ["src/search_tool"]
 
 [dependency-groups]
-dev = ["pytest>=8.3", "ruff>=0.7", "black>=24.10"]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.7",
+    "black>=24.10",
+]
 
 [tool.black]
 line-length = 88
