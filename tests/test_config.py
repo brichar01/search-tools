@@ -5,7 +5,9 @@ from search_tool.config import (
     ConfigError,
     Location,
     load_config,
+    load_weights,
     parse_config,
+    parse_weights,
     select_locations,
     starter_config,
     write_starter_config,
@@ -118,3 +120,44 @@ def test_write_starter_config_refuses_to_overwrite(tmp_path):
     with pytest.raises(ConfigError, match="already exists"):
         write_starter_config(path)
     assert path.read_text() == "notes: {tools: [rg]}\n"
+
+
+def test_parse_weights_resolves_aliases_and_numbers():
+    assert parse_weights({"weights": {"ripgrep": 2, "ck": 0.5}}) == {
+        "rg": 2.0,
+        "ck": 0.5,
+    }
+
+
+def test_parse_weights_defaults_to_none_set():
+    assert parse_weights({"notes": {"tools": ["ck"]}}) == {}
+    assert parse_weights(None) == {}
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"weights": ["ck"]},
+        {"weights": {"ck": "heavy"}},
+        {"weights": {"ck": -1}},
+        {"weights": {"nope": 1}},
+    ],
+)
+def test_parse_weights_rejects_a_broken_weight(document):
+    with pytest.raises(ConfigError):
+        parse_weights(document)
+
+
+def test_weights_are_not_a_location():
+    document = {"weights": {"ck": 0.5}, "notes": {"directory": "/tmp", "tools": ["ck"]}}
+    assert list(parse_config(document)) == ["notes"]
+
+
+def test_load_weights_reads_a_file(tmp_path):
+    path = tmp_path / "config.yml"
+    path.write_text("weights:\n  ck: 0.5\nnotes:\n  directory: /tmp\n  tools: [ck]\n")
+    assert load_weights(path) == {"ck": 0.5}
+
+
+def test_load_weights_without_a_file(tmp_path):
+    assert load_weights(tmp_path / "absent.yml") == {}

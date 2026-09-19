@@ -27,7 +27,10 @@ def _ck_index(directory: Path, ignore: tuple[str, ...]) -> Command:
     return [["ck", "--index", "", *excludes, str(directory)]]
 
 
-INDEXED_TOOLS: dict[str, Callable[[Path, tuple[str, ...]], Command]] = {"ck": _ck_index}
+INDEXED_TOOLS: dict[str, Callable[[Path, tuple[str, ...]], Command]] = {
+    "ck": _ck_index,
+    "ck-lex": _ck_index,
+}
 """The tools that keep an index, and the command that builds it."""
 
 

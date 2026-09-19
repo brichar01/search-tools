@@ -9,19 +9,25 @@ from pathlib import Path
 
 import yaml
 
+from search_tool.query import Lowered, Query, no_paths, to_cql
 from search_tool.tools.tools_base import Command, Hit, Tool
 
 
+def _lower(query: Query) -> Lowered:
+    """Return the query as Confluence text search. Confluence holds no local paths."""
+    return Lowered(to_cql(query), no_paths(query))
+
+
 def _rovo(
-    query: str, directory: Path | None, ignore: tuple[str, ...], case_sensitive: bool
+    lowered: Lowered, directory: Path | None, ignore: tuple[str, ...], case: bool
 ) -> Command:
-    return [["twg", "rovo", "search", query, "--app", "confluence"]]
+    return [["twg", "rovo", "search", lowered.query, "--app", "confluence"]]
 
 
 def _rovo_json(
-    query: str, directory: Path | None, ignore: tuple[str, ...], case_sensitive: bool
+    lowered: Lowered, directory: Path | None, ignore: tuple[str, ...], case: bool
 ) -> Command:
-    return [[*_rovo(query, directory, ignore, case_sensitive)[0], "--output", "json"]]
+    return [[*_rovo(lowered, directory, ignore, case)[0], "--output", "json"]]
 
 
 def _rovo_items(stdout: str) -> list[dict]:
@@ -71,4 +77,4 @@ def parse_rovo(stdout: str) -> list[Hit]:
     return hits
 
 
-ROVO = Tool("rovo", "remote", False, _rovo, _rovo_json, parse_rovo)
+ROVO = Tool("rovo", "remote", "remote", False, _lower, _rovo, _rovo_json, parse_rovo)

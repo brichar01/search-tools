@@ -2,16 +2,22 @@
 
 from pathlib import Path
 
+from search_tool.query import Lowered, Query, no_paths, to_regex
 from search_tool.tools.ripgrep import rg_case
 from search_tool.tools.tools_base import Command, Hit, Tool
 
-# Strips the zsh extended-_history prefix, then keeps the first run of each
+# Strips the zsh extended-history prefix, then keeps the first run of each
 # command, so a command repeated across the file reports once.
 _HISTORY_TIDY = '{sub(/^: [0-9]+:[0-9]+;/, "")} !seen[$0]++'
 
 
+def _lower(query: Query) -> Lowered:
+    """Return the query as a regex. The history is one file, so it takes no glob."""
+    return Lowered(to_regex(query), no_paths(query))
+
+
 def _history(
-    query: str, directory: Path | None, ignore: tuple[str, ...], case_sensitive: bool
+    lowered: Lowered, directory: Path | None, ignore: tuple[str, ...], case: bool
 ) -> Command:
     return [
         [
@@ -20,9 +26,9 @@ def _history(
             "never",
             "--no-filename",
             "--no-line-number",
-            *rg_case(case_sensitive),
+            *rg_case(case),
             "--",
-            query,
+            lowered.query,
             str(directory),
         ],
         ["awk", _HISTORY_TIDY],
@@ -42,4 +48,4 @@ def parse_history(stdout: str) -> list[Hit]:
     ]
 
 
-HIST = Tool("hist", "regex", True, _history, _history, parse_history)
+HIST = Tool("hist", "regex", "command", True, _lower, _history, _history, parse_history)

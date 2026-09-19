@@ -2,12 +2,18 @@
 
 from pathlib import Path
 
+from search_tool.query import Lowered, Query, to_regex
 from search_tool.tools.tools_base import Command, Hit, Tool, records
 
 
 def rg_globs(ignore: tuple[str, ...]) -> list[str]:
     """Return the ripgrep globs that prune each ignored directory name."""
     return [f"--glob=!{name}/" for name in ignore]
+
+
+def rg_include(globs: tuple[str, ...]) -> list[str]:
+    """Return the ripgrep globs that keep only what a path filter names."""
+    return [f"--glob={glob}" for glob in globs]
 
 
 def rg_case(case_sensitive: bool) -> list[str]:
@@ -19,8 +25,13 @@ def rg_case(case_sensitive: bool) -> list[str]:
     return ["--case-sensitive" if case_sensitive else "--ignore-case"]
 
 
+def lower_regex(query: Query) -> Lowered:
+    """Return the query as one regular expression, with its path filters."""
+    return Lowered(to_regex(query), query.paths)
+
+
 def _ripgrep(
-    query: str, directory: Path | None, ignore: tuple[str, ...], case_sensitive: bool
+    lowered: Lowered, directory: Path | None, ignore: tuple[str, ...], case: bool
 ) -> Command:
     return [
         [
@@ -29,37 +40,45 @@ def _ripgrep(
             "never",
             "--line-number",
             "--with-filename",
-            *rg_case(case_sensitive),
+            *rg_case(case),
             *rg_globs(ignore),
+            *rg_include(lowered.globs),
             "--",
-            query,
+            lowered.query,
             str(directory),
         ]
     ]
 
 
 def _ripgrep_json(
-    query: str, directory: Path | None, ignore: tuple[str, ...], case_sensitive: bool
+    lowered: Lowered, directory: Path | None, ignore: tuple[str, ...], case: bool
 ) -> Command:
     return [
         [
             "rg",
             "--json",
-            *rg_case(case_sensitive),
+            *rg_case(case),
             *rg_globs(ignore),
+            *rg_include(lowered.globs),
             "--",
-            query,
+            lowered.query,
             str(directory),
         ]
     ]
 
 
 def _ripgrep_files(
-    query: str, directory: Path | None, ignore: tuple[str, ...], case_sensitive: bool
+    lowered: Lowered, directory: Path | None, ignore: tuple[str, ...], case: bool
 ) -> Command:
     return [
-        ["rg", "--files", *rg_globs(ignore), str(directory)],
-        ["rg", "--color", "never", *rg_case(case_sensitive), "--", query],
+        [
+            "rg",
+            "--files",
+            *rg_globs(ignore),
+            *rg_include(lowered.globs),
+            str(directory),
+        ],
+        ["rg", "--color", "never", *rg_case(case), "--", lowered.query],
     ]
 
 
@@ -95,5 +114,23 @@ def parse_paths(stdout: str) -> list[Hit]:
     ]
 
 
-RG = Tool("rg", "regex", True, _ripgrep, _ripgrep_json, parse_ripgrep)
-RG_FILES = Tool("rg-files", "files", True, _ripgrep_files, _ripgrep_files, parse_paths)
+RG = Tool(
+    "rg",
+    "regex",
+    "file",
+    True,
+    lower_regex,
+    _ripgrep,
+    _ripgrep_json,
+    parse_ripgrep,
+)
+RG_FILES = Tool(
+    "rg-files",
+    "files",
+    "file",
+    True,
+    lower_regex,
+    _ripgrep_files,
+    _ripgrep_files,
+    parse_paths,
+)

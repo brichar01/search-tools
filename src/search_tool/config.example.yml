@@ -3,21 +3,34 @@
 # cannot reach: tldr needs the cheatsheets cloned, confluence needs twg, help
 # needs search-tool-help-index to have run.
 
+# ast is left out of source because it takes an ast-grep pattern rather than
+# the query language, and it runs only under --kind ast. Add it to a leaf you
+# search with patterns.
+
+# What one vote of a tool is worth when a target is scored, counted into its
+# reach as well as its vote. Semantic and lexical ck read the one index, so the
+# two of them agreeing says less than two tools that looked for different
+# things. Raise a tool to 1 to have it counted in full. weights is a reserved
+# name, so no location can be called it.
+weights:
+  ck: 0.6
+  ck-lex: 0.6
+
 source:
   directory: $HOME/src
-  tools: [ast, ripgrep, ripgrep-files]
+  tools: [ripgrep, ripgrep-files, ck-lex]
   ignore: [.venv, node_modules, target]
 
 notes:
   directory: $HOME/personal
-  tools: [ck, rg]
+  tools: [ck, ck-lex, rg]
 
 man:
   tools: [man]
 
 help:
   directory: $HOME/.cache/search-tool/help
-  tools: [fzf, rg, ck]
+  tools: [fzf, rg, ck, ck-lex]
 
 history:
   directory: $HOME/.zsh_history
@@ -25,7 +38,7 @@ history:
 
 tldr:
   directory: $HOME/.local/share/tldr/pages
-  tools: [rg, ck]
+  tools: [rg, ck, ck-lex]
 
 confluence:
   tools: [rovo]

@@ -15,6 +15,10 @@ class ConfigError(ValueError):
     """The config file does not describe a set of search locations."""
 
 
+WEIGHTS = "weights"
+"""Top-level key holding the tool weights, so no location can take the name."""
+
+
 @dataclass(frozen=True)
 class Location:
     """A named place to search and the tools that search it.
@@ -89,6 +93,41 @@ def parse_ignore(name: object, raw: object) -> tuple[str, ...]:
     return tuple(names)
 
 
+def parse_weights(document: object) -> dict[str, float]:
+    """Return the tool weights a parsed config document sets.
+
+    Args:
+        document: The object `yaml.safe_load` returned.
+
+    Returns:
+        Each named tool and what one of its votes is worth, keyed by canonical
+        name. A tool left out keeps the weight the tool itself declares.
+
+    Raises:
+        ConfigError: The `weights` key is not a mapping of known tools to
+            numbers that are zero or more.
+    """
+    if not isinstance(document, dict):
+        return {}
+    raw = document.get(WEIGHTS)
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{WEIGHTS} must map a tool name to a number")
+    weights = {}
+    for name, value in raw.items():
+        try:
+            tool = resolve_tool(name)
+        except KeyError as error:
+            raise ConfigError(f"{WEIGHTS}: {error.args[0]}") from error
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ConfigError(f"{WEIGHTS}: {name!r} must be a number")
+        if value < 0:
+            raise ConfigError(f"{WEIGHTS}: {name!r} cannot be negative")
+        weights[tool.name] = float(value)
+    return weights
+
+
 def parse_config(document: object) -> dict[str, Location]:
     """Return the locations a parsed config document describes.
 
@@ -99,6 +138,7 @@ def parse_config(document: object) -> dict[str, Location]:
         ConfigError: A leaf is missing `tools`, gives something other than a
             list of tools, names a tool that needs a directory without giving
             one, or lists something other than directory names under `ignore`.
+            The `weights` key holds the tool weights, not a location.
     """
     if document is None:
         return {}
@@ -107,6 +147,8 @@ def parse_config(document: object) -> dict[str, Location]:
 
     locations = {}
     for name, leaf in document.items():
+        if name == WEIGHTS:
+            continue
         if not isinstance(leaf, dict):
             raise ConfigError(f"Location {name!r} must be a mapping")
         raw_tools = leaf.get("tools")
@@ -134,6 +176,28 @@ def parse_config(document: object) -> dict[str, Location]:
             ignore=ignore,
         )
     return locations
+
+
+def load_weights(path: Path) -> dict[str, float]:
+    """Return the tool weights a config file sets, or none where it is absent.
+
+    Args:
+        path: The YAML file to read.
+
+    Raises:
+        ConfigError: The file is not valid YAML, or sets a weight that is not a
+            number against a known tool.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        document = yaml.safe_load(path.read_text())
+    except yaml.YAMLError as error:
+        raise ConfigError(f"{path}: {error}") from error
+    try:
+        return parse_weights(document)
+    except ConfigError as error:
+        raise ConfigError(f"{path}: {error.args[0]}") from error
 
 
 def load_config(path: Path) -> dict[str, Location]:

@@ -36,33 +36,62 @@ class Line:
     text: str
 
 
-def find_files(paths: Iterable[Path], skip: Iterable[str] = ()) -> Iterator[Path]:
+def matches(path: Path, globs: Iterable[str]) -> bool:
+    """Whether a path is one an include glob names.
+
+    Args:
+        path: Path to test, relative to the directory being walked.
+        globs: Globs to test it against. None of them keeps every path.
+
+    Returns:
+        Whether any glob matches. A glob holding no `/` matches the file name
+        alone, the way ripgrep reads one.
+    """
+    globs = list(globs)
+    if not globs:
+        return True
+    return any(
+        (path if "/" in glob else Path(path.name)).full_match(glob) for glob in globs
+    )
+
+
+def find_files(
+    paths: Iterable[Path], skip: Iterable[str] = (), include: Iterable[str] = ()
+) -> Iterator[Path]:
     """Yield the files to read, walking each directory given.
 
     Args:
         paths: Files and directories named on the command line.
         skip: Directory names to prune, matched at any depth.
+        include: Globs naming the files to keep, all of them by default.
 
     Yields:
         Every file under a directory whose path holds no dot component and no
         skipped name, and every file named directly.
     """
     pruned = set(skip)
+    globs = list(include)
     for path in paths:
         if not path.is_dir():
-            yield path
+            if matches(path, globs):
+                yield path
             continue
         for child in sorted(path.rglob("*")):
-            parts = child.relative_to(path).parts
+            relative = child.relative_to(path)
             if not child.is_file():
                 continue
-            if any(part.startswith(".") or part in pruned for part in parts):
+            if any(part.startswith(".") or part in pruned for part in relative.parts):
+                continue
+            if not matches(relative, globs):
                 continue
             yield child
 
 
 def read_lines(
-    paths: list[Path], stdin: TextIO, skip: Iterable[str] = ()
+    paths: list[Path],
+    stdin: TextIO,
+    skip: Iterable[str] = (),
+    include: Iterable[str] = (),
 ) -> list[Line]:
     """Return every line worth embedding, from the paths or from standard input.
 
@@ -70,6 +99,7 @@ def read_lines(
         paths: Files and directories to read. Empty reads `stdin` instead.
         stdin: Stream read where no path is given.
         skip: Directory names to prune while walking the paths.
+        include: Globs naming the files to read, all of them by default.
 
     Returns:
         The lines that hold something other than whitespace. A file that is not
@@ -82,7 +112,7 @@ def read_lines(
             if text.strip()
         ]
     lines = []
-    for path in find_files(paths, skip):
+    for path in find_files(paths, skip, include):
         try:
             content = path.read_text()
         except OSError, UnicodeDecodeError:
@@ -205,6 +235,13 @@ def parse_args() -> argparse.Namespace:
         help="Directory name to prune, repeatable",
     )
     parser.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Glob naming the files to read, repeatable",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="json_output",
@@ -221,6 +258,7 @@ def main(
     model: str,
     json_output: bool,
     skip: list[str],
+    include: list[str] | None = None,
     case_sensitive: bool = False,
 ) -> int:
     """Rank the lines of the input against the query and write the closest.
@@ -233,6 +271,7 @@ def main(
         model: Embedding model to load, by Hugging Face name or local path.
         json_output: Write JSON records rather than `source:line:text`.
         skip: Directory names to prune while walking the paths.
+        include: Globs naming the files to read, all of them by default.
         case_sensitive: Embed the query and the lines as written. The default
             folds both to lower case.
 
@@ -246,7 +285,7 @@ def main(
     except OSError as error:
         print(f"{model}: {error}", file=sys.stderr)
         return 2
-    lines = read_lines(paths, sys.stdin, skip)
+    lines = read_lines(paths, sys.stdin, skip, include or [])
     hits = rank(embedder, query, lines, top_k, threshold, case_sensitive)
     write_hits(hits, json_output, sys.stdout)
     return 0 if hits else 1
@@ -264,6 +303,7 @@ def run() -> None:
             model=arguments.model,
             json_output=arguments.json_output,
             skip=arguments.skip,
+            include=arguments.include,
             case_sensitive=arguments.case_sensitive,
         )
     )

@@ -51,28 +51,29 @@ def records(capsys):
     return [json.loads(line) for line in capsys.readouterr().out.splitlines()]
 
 
-def test_json_output_reports_every_search_then_the_candidates(
-    workspace, tmp_path, capsys
-):
+def test_json_output_reports_every_search_then_the_targets(workspace, tmp_path, capsys):
     require_program("rg")
     _, directory = workspace
     assert search(workspace, tmp_path, json_output=True) == 0
     written = records(capsys)
-    assert [record["type"] for record in written] == ["search", "candidate"]
+    assert [record["type"] for record in written] == ["search", "target"]
 
-    ran, candidate = written
+    ran, target = written
     assert ran["tool"] == "rg"
     assert ran["kind"] == "regex"
     assert ran["directory"] == str(directory)
     assert ran["candidates"] == 1
     assert ran["exit_code"] == 0
 
-    assert candidate["query"] == "saturation"
-    assert candidate["key"] == str(directory / "probe" / "reading.py")
-    assert candidate["kind"] == "file"
+    assert target["query"] == "saturation"
+    assert target["key"] == str(directory / "probe" / "reading.py")
+    assert target["kind"] == "file"
+
+    (candidate,) = target["candidates"]
     assert candidate["line"] == 1
     assert candidate["end_line"] == 1
     assert candidate["text"] == "saturation = 0.9"
+    assert candidate["votes"] == 1.0
     assert candidate["sources"] == [
         {
             "location": "source",
@@ -142,9 +143,7 @@ def test_history_dedupes_repeated_commands(tmp_path, capsys):
         init=False,
     )
     assert status == 0
-    keys = [
-        record["key"] for record in records(capsys) if record["type"] == "candidate"
-    ]
+    keys = [record["key"] for record in records(capsys) if record["type"] == "target"]
     assert sorted(keys) == ["git commit", "git status"]
 
 
@@ -249,3 +248,61 @@ def test_case_sensitive_drops_the_mismatched_query(workspace, tmp_path, capsys):
     require_program("rg")
     assert search(workspace, tmp_path, query="SATURATION", case_sensitive=True) == 1
     assert "saturation = 0.9" not in capsys.readouterr().out
+
+
+def test_a_skipped_tool_says_what_it_could_not_express(workspace, tmp_path, capsys):
+    assert search(workspace, tmp_path, query="saturation -absent") == 1
+    out = capsys.readouterr().out
+    assert "skipped: cannot express negation" in out
+
+
+def test_json_output_reports_a_skipped_search(workspace, tmp_path, capsys):
+    assert (
+        search(workspace, tmp_path, query="saturation -absent", json_output=True) == 1
+    )
+    (ran,) = records(capsys)
+    assert ran["skipped"] == "cannot express negation"
+    assert ran["command"] == []
+
+
+def test_an_unparsable_query_stops_the_run(workspace, tmp_path):
+    with pytest.raises(SystemExit):
+        search(workspace, tmp_path, query='"unclosed')
+
+
+def test_json_output_scores_each_target(workspace, tmp_path, capsys):
+    require_program("rg")
+    assert search(workspace, tmp_path, json_output=True) == 0
+    target = records(capsys)[1]
+    assert (target["votes"], target["reach"]) == (1.0, 1.0)
+    assert target["relevance"] == 0.5
+
+
+def test_a_prior_of_zero_scores_the_bare_agreement(workspace, tmp_path, capsys):
+    require_program("rg")
+    assert search(workspace, tmp_path, json_output=True, prior=0.0) == 0
+    assert records(capsys)[1]["relevance"] == 1.0
+
+
+def test_the_prior_flag_takes_a_number(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["search-tool", "--prior", "2", "probe"])
+    assert parse_args().prior == 2.0
+
+
+def test_tui_takes_a_query_or_none(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["search-tool", "--tui"])
+    assert parse_args().query is None
+    monkeypatch.setattr(sys, "argv", ["search-tool", "--tui", "saturation", "source"])
+    arguments = parse_args()
+    assert (arguments.query, arguments.locations) == ("saturation", ["source"])
+
+
+def test_tui_opens_the_app_instead_of_searching(workspace, tmp_path, monkeypatch):
+    opened = {}
+    monkeypatch.setattr(
+        "search_tool.tui.run_app",
+        lambda **arguments: opened.update(arguments) or 0,
+    )
+    assert search(workspace, tmp_path, tui=True) == 0
+    assert opened["query"] == "saturation"
+    assert opened["locations"] == ["source"]

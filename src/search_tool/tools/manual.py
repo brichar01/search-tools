@@ -2,13 +2,19 @@
 
 from pathlib import Path
 
+from search_tool.query import Lowered, Query, no_paths, to_regex
 from search_tool.tools.tools_base import Command, Hit, Tool
 
 
+def _lower(query: Query) -> Lowered:
+    """Return the query as a regex. `man` searches the installed pages, not a tree."""
+    return Lowered(to_regex(query), no_paths(query))
+
+
 def _manual(
-    query: str, directory: Path | None, ignore: tuple[str, ...], case_sensitive: bool
+    lowered: Lowered, directory: Path | None, ignore: tuple[str, ...], case: bool
 ) -> Command:
-    return [["man", "-K", "-w", "--regex", "-I" if case_sensitive else "-i", query]]
+    return [["man", "-K", "-w", "--regex", "-I" if case else "-i", lowered.query]]
 
 
 def parse_man(stdout: str) -> list[Hit]:
@@ -33,4 +39,4 @@ def parse_man(stdout: str) -> list[Hit]:
     return hits
 
 
-MAN = Tool("man", "regex", False, _manual, _manual, parse_man)
+MAN = Tool("man", "regex", "manual", False, _lower, _manual, _manual, parse_man)

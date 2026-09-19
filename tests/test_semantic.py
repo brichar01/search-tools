@@ -150,3 +150,14 @@ def test_rank_keeps_the_case_where_asked():
     rank(model, "Mixed Query", lines, top_k=1, threshold=-1.0, case_sensitive=True)
 
     assert model.seen == ["Mixed Query", "Mixed Case Line"]
+
+
+def test_read_lines_keeps_only_the_included_globs(tmp_path):
+    (tmp_path / "a.py").write_text("alpha\n")
+    (tmp_path / "b.txt").write_text("beta\n")
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "c.py").write_text("gamma\n")
+    lines = read_lines([tmp_path], io.StringIO(), [], ["*.py"])
+    assert [line.text for line in lines] == ["alpha", "gamma"]
+    nested = read_lines([tmp_path], io.StringIO(), [], ["pkg/*.py"])
+    assert [line.text for line in nested] == ["gamma"]

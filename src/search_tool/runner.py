@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from search_tool.config import Location
+from search_tool.query import Query, Unsupported
 from search_tool.tools import TOOLS, Command, resolve_kinds
 
 
@@ -17,7 +18,11 @@ class Search:
         tool: Canonical tool name.
         kind: Search kind of the tool.
         directory: Directory searched, or `None` for a system or remote source.
-        command: The pipeline to run.
+        command: The pipeline to run, empty where the search is skipped.
+        skipped: Why the tool did not run, where the query holds something it
+            cannot express, and `None` where it ran.
+        query: The query as the tool takes it, empty where the search is
+            skipped. A tool that scores its own hits reads it back.
     """
 
     location: str
@@ -25,6 +30,8 @@ class Search:
     kind: str
     directory: Path | None
     command: Command
+    skipped: str | None = None
+    query: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,7 +79,7 @@ def targets(location: Location, subdir: str | None) -> list[Path | None]:
 
 def plan_searches(
     locations: list[Location],
-    query: str,
+    query: Query,
     kinds: list[str],
     subdir: str | None,
     structured: bool = False,
@@ -82,9 +89,10 @@ def plan_searches(
 
     Args:
         locations: The selected locations.
-        query: The text, pattern or AST pattern to search for.
+        query: The parsed query, lowered into the syntax of each tool. A
+            tool that cannot express part of it is planned as skipped.
         kinds: Search kinds to keep, each optionally negated with `!`.
-            Empty keeps every kind.
+            Empty keeps every kind but `ast`.
         subdir: Glob limiting each location to matching subdirectories.
         structured: Ask each tool for the output its parser reads, rather than
             the output written for a person.
@@ -99,6 +107,11 @@ def plan_searches(
             if tool.kind not in wanted:
                 continue
             build = tool.build_json if structured else tool.build
+            skipped = None
+            try:
+                lowered = tool.lower(query)
+            except Unsupported as error:
+                skipped = f"cannot express {error}"
             for directory in targets(
                 location, subdir if tool.needs_directory else None
             ):
@@ -108,9 +121,15 @@ def plan_searches(
                         tool=tool.name,
                         kind=tool.kind,
                         directory=directory,
-                        command=build(
-                            query, directory, location.ignore, case_sensitive
+                        command=(
+                            []
+                            if skipped
+                            else build(
+                                lowered, directory, location.ignore, case_sensitive
+                            )
                         ),
+                        skipped=skipped,
+                        query="" if skipped else lowered.query,
                     )
                 )
     return searches
@@ -120,8 +139,11 @@ def run_search(search: Search) -> Result:
     """Run one search and collect its output.
 
     A pipeline stage that exits non-zero does not stop the stages after it, so
-    the exit code reported is the highest of them all.
+    the exit code reported is the highest of them all. A skipped search runs
+    nothing and reports nothing found.
     """
+    if search.skipped is not None:
+        return Result(search, 0, "", "")
     processes = []
     stdin = None
     try:

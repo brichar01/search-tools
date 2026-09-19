@@ -34,8 +34,9 @@ class Candidate:
         kind: `file`, `command`, `manual` or `remote`.
         line: First line of the merged span, or `None` for a whole file or page.
         end_line: Last line of the merged span.
-        text: Longest text any source reported, for a later ranking stage.
+        text: Longest text any source reported.
         sources: Every tool that reported the candidate, in the order they ran.
+        votes: Weighted vote of every source, zero until the run is scored.
     """
 
     key: str
@@ -44,6 +45,7 @@ class Candidate:
     end_line: int | None
     text: str
     sources: list[Source] = field(default_factory=list)
+    votes: float = 0.0
 
     def absorb(self, hit: Hit, source: Source) -> None:
         """Merge an overlapping hit into this candidate."""
@@ -58,7 +60,10 @@ def _group(results: list[Result]) -> dict[str, list[tuple[Hit, Source]]]:
     grouped: dict[str, list[tuple[Hit, Source]]] = {}
     for result in results:
         search = result.search
-        hits = TOOLS[search.tool].parse(result.stdout)
+        tool = TOOLS[search.tool]
+        hits = tool.parse(result.stdout)
+        if tool.rank is not None:
+            hits = tool.rank(hits, search.query)
         for rank, hit in enumerate(hits, start=1):
             source = Source(
                 location=search.location,
